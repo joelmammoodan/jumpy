@@ -14,6 +14,10 @@ use serde::{Deserialize, Serialize};
 
 use eframe::egui;
 
+// Put this near your other imports at the top of src/main.rs
+#[cfg(unix)]
+use socket2::SockRefExt; // Or use socket2::SocketExt; depending on your socket2 crate version
+
 // --- Windows-Specific Input Simulation ---
 #[cfg(windows)]
 fn send_mouse_move(dx: i32, dy: i32) {
@@ -312,6 +316,9 @@ impl JumpyApp {
                 use socket2::{Socket, Domain, Type, Protocol, SockAddr};
                 let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
                 socket.set_reuse_address(true)?;
+                #[cfg(unix)]
+                socket.set_reuse_port(true)?;
+
                 #[cfg(not(windows))]
                 socket.set_reuse_port(true)?;
                 socket.bind(&SockAddr::from(socket_addr))?;
