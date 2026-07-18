@@ -45,6 +45,8 @@ pub struct AppState {
     // Seamless mode settings
     pub remote_edge: Edge,
     pub is_controlling_remote: bool,
+    pub virtual_x: f32,
+    pub virtual_y: f32,
 }
 
 pub fn get_local_ip() -> String {

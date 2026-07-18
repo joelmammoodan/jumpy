@@ -30,6 +30,8 @@ pub struct JumpyApp {
     pub accum_y: f32,
     pub accum_scroll: f32,
     pub accent_hue: f32,
+    pub last_x: i32,
+    pub last_y: i32,
     
     pub platform: Box<dyn PlatformHandler>,
     
@@ -58,6 +60,8 @@ impl JumpyApp {
             peers: std::collections::HashMap::new(),
             remote_edge: Edge::None,
             is_controlling_remote: false,
+            virtual_x: 0.0,
+            virtual_y: 0.0,
         }));
 
         spawn_network_threads(Arc::clone(&state));
@@ -122,6 +126,8 @@ impl JumpyApp {
             accum_y: 0.0,
             accum_scroll: 0.0,
             accent_hue: 265.0,
+            last_x: 0,
+            last_y: 0,
             platform,
             logo: logo_texture,
         }

@@ -32,35 +32,92 @@ impl eframe::App for JumpyApp {
             }
 
             if hit {
+                let center_x = w / 2;
+                let center_y = h / 2;
                 {
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = true;
+                    match target_edge {
+                        Edge::Left => { s.virtual_x = 1920.0; s.virtual_y = y as f32; }
+                        Edge::Right => { s.virtual_x = 0.0; s.virtual_y = y as f32; }
+                        Edge::Top => { s.virtual_x = x as f32; s.virtual_y = 1080.0; }
+                        Edge::Bottom => { s.virtual_x = x as f32; s.virtual_y = 0.0; }
+                        _ => {}
+                    }
                 }
                 println!("Transitioned to Remote Mode at edge {:?}", target_edge);
-                // Move cursor to center so it doesn't immediately exit or click local things
-                self.platform.set_mouse_pos(w / 2, h / 2);
+                self.platform.set_mouse_pos(center_x, center_y);
+                self.last_x = center_x;
+                self.last_y = center_y;
             }
         }
 
         // 2. If in Remote Mode, handle trapping and sending deltas
-        if is_controlling {
+        if { self.state.lock().unwrap().is_controlling_remote } {
             let (x, y) = self.platform.get_mouse_pos();
             let (w, h) = self.platform.get_screen_size();
-            let center_x = w / 2;
-            let center_y = h / 2;
             
-            let dx = x - center_x;
-            let dy = y - center_y;
+            let dx = x - self.last_x;
+            let dy = y - self.last_y;
             
             if dx != 0 || dy != 0 {
+                let scaled_dx = (dx as f32) * self.sensitivity;
+                let scaled_dy = (dy as f32) * self.sensitivity;
+
                 self.send_mouse_msg(MouseControlMsg::Move { 
-                    dx: (dx as f32) * self.sensitivity, 
-                    dy: (dy as f32) * self.sensitivity 
+                    dx: scaled_dx, 
+                    dy: scaled_dy 
                 });
-                self.platform.set_mouse_pos(center_x, center_y);
+                self.last_x = x;
+                self.last_y = y;
+
+                let mut should_return = false;
+                {
+                    let mut s = self.state.lock().unwrap();
+                    s.virtual_x += scaled_dx;
+                    s.virtual_y += scaled_dy;
+                    
+                    let target = s.remote_edge;
+                    match target {
+                        Edge::Left => if s.virtual_x > 1920.0 { should_return = true; }
+                        Edge::Right => if s.virtual_x < 0.0 { should_return = true; }
+                        Edge::Top => if s.virtual_y > 1080.0 { should_return = true; }
+                        Edge::Bottom => if s.virtual_y < 0.0 { should_return = true; }
+                        _ => {}
+                    }
+                }
+
+                if should_return {
+                    println!("Returning control to host!");
+                    let mut s = self.state.lock().unwrap();
+                    s.is_controlling_remote = false;
+                    let return_x = match s.remote_edge {
+                        Edge::Left => 10,
+                        Edge::Right => w - 10,
+                        _ => w / 2,
+                    };
+                    let return_y = match s.remote_edge {
+                        Edge::Top => 10,
+                        Edge::Bottom => h - 10,
+                        _ => h / 2,
+                    };
+                    self.platform.set_mouse_pos(return_x, return_y);
+                    self.last_x = return_x;
+                    self.last_y = return_y;
+                }
             }
 
-            // Check if user wants to return locally (hit escape or opposite edge on remote machine - handled by msg)
+            // Only trap if we haven't exited, and we are near the edge
+            if { self.state.lock().unwrap().is_controlling_remote } {
+                if x < 200 || x > w - 200 || y < 200 || y > h - 200 {
+                    let center_x = w / 2;
+                    let center_y = h / 2;
+                    self.platform.set_mouse_pos(center_x, center_y);
+                    self.last_x = center_x;
+                    self.last_y = center_y;
+                }
+            }
+
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                 let mut s = self.state.lock().unwrap();
                 s.is_controlling_remote = false;
