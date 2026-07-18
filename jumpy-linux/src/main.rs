@@ -21,8 +21,26 @@ impl LinuxPlatform {
 
 impl PlatformHandler for LinuxPlatform {
     fn get_mouse_pos(&self) -> (i32, i32) {
-        let enigo = self.enigo.lock().unwrap();
-        enigo.mouse_location()
+        let output = std::process::Command::new("xdotool")
+            .arg("getmouselocation")
+            .arg("--shell")
+            .output();
+            
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut x = 0;
+            let mut y = 0;
+            for line in stdout.lines() {
+                if line.starts_with("X=") {
+                    x = line[2..].parse().unwrap_or(0);
+                } else if line.starts_with("Y=") {
+                    y = line[2..].parse().unwrap_or(0);
+                }
+            }
+            (x, y)
+        } else {
+            (0, 0)
+        }
     }
 
     fn set_mouse_pos(&self, x: i32, y: i32) {
