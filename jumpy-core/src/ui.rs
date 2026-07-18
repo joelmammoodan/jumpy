@@ -79,10 +79,10 @@ impl eframe::App for JumpyApp {
                     
                     let target = s.remote_edge;
                     match target {
-                        Edge::Left => if s.virtual_x > 1920.0 { should_return = true; }
-                        Edge::Right => if s.virtual_x < 0.0 { should_return = true; }
-                        Edge::Top => if s.virtual_y > 1080.0 { should_return = true; }
-                        Edge::Bottom => if s.virtual_y < 0.0 { should_return = true; }
+                        Edge::Left => if s.virtual_x > 1920.0 + 50.0 { should_return = true; }
+                        Edge::Right => if s.virtual_x < -50.0 { should_return = true; }
+                        Edge::Top => if s.virtual_y > 1080.0 + 50.0 { should_return = true; }
+                        Edge::Bottom => if s.virtual_y < -50.0 { should_return = true; }
                         _ => {}
                     }
                 }
