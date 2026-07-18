@@ -86,21 +86,27 @@ impl JumpyApp {
         
         let client_socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind client sending socket");
 
-        // Load Logo Texture
-        let logo_bytes = include_bytes!(r"C:\Users\LEGION\.gemini\antigravity-ide\brain\02be4a7d-0897-455d-8e8a-6c2e809714b0\jumpy_logo_1784392645422.png");
-        let image = image::load_from_memory(logo_bytes).unwrap();
-        let size = [image.width() as _, image.height() as _];
-        let image_buffer = image.to_rgba8();
-        let pixels = image_buffer.as_flat_samples();
-        let logo_color_image = egui::ColorImage::from_rgba_unmultiplied(
-            size,
-            pixels.as_slice(),
-        );
-        let logo_texture = cc.egui_ctx.load_texture(
-            "logo",
-            logo_color_image,
-            Default::default()
-        );
+        // Load Logo Texture at runtime gracefully
+        let logo_texture = if let Ok(logo_bytes) = std::fs::read("assets/logo.png") {
+            if let Ok(image) = image::load_from_memory(&logo_bytes) {
+                let size = [image.width() as _, image.height() as _];
+                let image_buffer = image.to_rgba8();
+                let pixels = image_buffer.as_flat_samples();
+                let logo_color_image = egui::ColorImage::from_rgba_unmultiplied(
+                    size,
+                    pixels.as_slice(),
+                );
+                Some(cc.egui_ctx.load_texture(
+                    "logo",
+                    logo_color_image,
+                    Default::default()
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         Self {
             state,
@@ -117,7 +123,7 @@ impl JumpyApp {
             accum_scroll: 0.0,
             accent_hue: 265.0,
             platform,
-            logo: Some(logo_texture),
+            logo: logo_texture,
         }
     }
 
