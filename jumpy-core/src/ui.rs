@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::app::{JumpyApp, Tab};
+use crate::app::JumpyApp;
 use crate::network::MouseControlMsg;
 use crate::platform::Edge;
 
@@ -135,80 +135,94 @@ impl eframe::App for JumpyApp {
                         ui.add(egui::Image::new(logo).fit_to_exact_size(egui::vec2(32.0, 32.0)));
                     }
                     ui.label(egui::RichText::new("JUMPY").font(egui::FontId::proportional(18.0)).color(primary).strong());
-                    
-                    ui.add_space(32.0);
-                    
-                    let tabs = [
-                        (Tab::Settings, "⚙ Settings"),
-                        (Tab::Send, "📤 Connect"),
-                    ];
-                    for (tab, label) in tabs {
-                        let is_active = self.current_tab == tab;
-                        let text_color = if is_active { egui::Color32::WHITE } else { egui::Color32::from_rgb(150, 155, 170) };
-                        let bg_color = if is_active { primary } else { egui::Color32::TRANSPARENT };
-                        let button_style = egui::Button::new(egui::RichText::new(label).color(text_color)).fill(bg_color).rounding(16.0);
-                        if ui.add_sized([115.0, 32.0], button_style).clicked() {
-                            self.current_tab = tab;
-                        }
-                    }
                 });
             });
 
         // UI Main Panel
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(egui::Color32::from_rgb(10, 11, 16)).inner_margin(24.0))
-            .show(ctx, |ui| match self.current_tab {
-                Tab::Settings => {
-                    ui.label(egui::RichText::new("Seamless Setup").strong().color(egui::Color32::WHITE));
-                    ui.add_space(10.0);
-                    ui.label("When active, moving your mouse to the chosen edge of your screen will transfer control to the selected remote computer.");
-                    ui.add_space(10.0);
-                    
-                    let mut current_edge = { self.state.lock().unwrap().remote_edge };
-                    egui::ComboBox::from_label("Remote Screen Edge")
-                        .selected_text(format!("{:?}", current_edge))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut current_edge, Edge::None, "None (Disabled)");
-                            ui.selectable_value(&mut current_edge, Edge::Left, "Left");
-                            ui.selectable_value(&mut current_edge, Edge::Right, "Right");
-                            ui.selectable_value(&mut current_edge, Edge::Top, "Top");
-                            ui.selectable_value(&mut current_edge, Edge::Bottom, "Bottom");
-                        });
-                    
-                    if { self.state.lock().unwrap().remote_edge } != current_edge {
-                        self.state.lock().unwrap().remote_edge = current_edge;
-                    }
-                    
-                    ui.add_space(20.0);
-                    ui.label(format!("Local IP: {}", { self.state.lock().unwrap().local_ip.clone() }));
-                },
-                Tab::Send => {
-                    let peers = {
-                        let s = self.state.lock().unwrap();
-                        s.peers.values().cloned().collect::<Vec<_>>()
-                    };
-                    if peers.is_empty() {
-                        ui.label("Scanning network...");
-                    } else {
-                        for peer in peers {
+            .show(ctx, |ui| {
+                // Local Info Section
+                ui.label(egui::RichText::new("Local Machine").strong().size(18.0).color(egui::Color32::WHITE));
+                ui.add_space(8.0);
+                
+                let (local_ip, local_name) = {
+                    let s = self.state.lock().unwrap();
+                    (s.local_ip.clone(), s.local_name.clone())
+                };
+                
+                ui.label(format!("Name: {}", local_name));
+                ui.label(format!("IP Address: {}", local_ip));
+                ui.add_space(16.0);
+                
+                // Seamless Setup Section
+                ui.label(egui::RichText::new("Seamless Edge Configuration").strong().size(16.0).color(egui::Color32::WHITE));
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Move your mouse to this edge to control the connected remote.").color(egui::Color32::GRAY));
+                ui.add_space(4.0);
+                
+                let mut current_edge = { self.state.lock().unwrap().remote_edge };
+                egui::ComboBox::from_label("Target Edge")
+                    .selected_text(format!("{:?}", current_edge))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut current_edge, Edge::None, "None (Disabled)");
+                        ui.selectable_value(&mut current_edge, Edge::Left, "Left");
+                        ui.selectable_value(&mut current_edge, Edge::Right, "Right");
+                        ui.selectable_value(&mut current_edge, Edge::Top, "Top");
+                        ui.selectable_value(&mut current_edge, Edge::Bottom, "Bottom");
+                    });
+                
+                if { self.state.lock().unwrap().remote_edge } != current_edge {
+                    self.state.lock().unwrap().remote_edge = current_edge;
+                }
+                
+                ui.add_space(24.0);
+                ui.separator();
+                ui.add_space(16.0);
+                
+                // Network Devices Section
+                ui.label(egui::RichText::new("Discovered Clients").strong().size(18.0).color(egui::Color32::WHITE));
+                ui.add_space(8.0);
+                
+                let peers = {
+                    let s = self.state.lock().unwrap();
+                    s.peers.values().cloned().collect::<Vec<_>>()
+                };
+                
+                if peers.is_empty() {
+                    ui.label(egui::RichText::new("Scanning network...").italics().color(egui::Color32::GRAY));
+                } else {
+                    for peer in peers {
+                        ui.group(|ui| {
                             ui.horizontal(|ui| {
-                                ui.label(&peer.name);
-                                ui.label(&peer.ip);
-                                let is_selected = self.selected_peer_id.as_ref() == Some(&peer.id);
-                                if is_selected {
-                                    if ui.button("Disconnect").clicked() {
-                                        self.selected_peer_id = None;
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new(&peer.name).strong().color(egui::Color32::WHITE));
+                                    ui.label(egui::RichText::new(format!("IP: {}", peer.ip)).size(12.0).color(egui::Color32::GRAY));
+                                });
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    let is_selected = self.selected_peer_id.as_ref() == Some(&peer.id);
+                                    if is_selected {
+                                        if ui.button("Disconnect").clicked() {
+                                            self.selected_peer_id = None;
+                                        }
+                                    } else {
+                                        if ui.button("Connect").clicked() {
+                                            self.selected_peer_id = Some(peer.id.clone());
+                                            
+                                            // Send Notification
+                                            let host_name = local_name.clone();
+                                            if let Ok(serialized) = serde_json::to_string(&MouseControlMsg::ConnectNotification { host_name }) {
+                                                let target = format!("{}:{}", peer.ip, peer.mouse_port);
+                                                let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+                                            }
+                                        }
                                     }
-                                } else {
-                                    if ui.button("Connect").clicked() {
-                                        self.selected_peer_id = Some(peer.id.clone());
-                                    }
-                                }
+                                });
                             });
-                        }
+                        });
+                        ui.add_space(4.0);
                     }
-                },
-                _ => {}
+                }
             });
     }
 }

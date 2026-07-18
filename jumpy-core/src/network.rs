@@ -31,6 +31,7 @@ pub enum MouseControlMsg {
     Click { button: String, pressed: bool },
     Scroll { dy: f32 },
     ReturnControl,
+    ConnectNotification { host_name: String },
 }
 
 pub struct AppState {
@@ -66,7 +67,9 @@ pub fn spawn_network_threads(state: Arc<Mutex<AppState>>) {
     // Broadcaster
     let b_state = Arc::clone(&state);
     std::thread::spawn(move || {
-        let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind broadcast socket");
+        let local_ip = { b_state.lock().unwrap().local_ip.clone() };
+        let socket = std::net::UdpSocket::bind(format!("{}:0", local_ip))
+            .unwrap_or_else(|_| std::net::UdpSocket::bind("0.0.0.0:0").expect("Failed to bind"));
         socket.set_broadcast(true).expect("Failed to enable broadcasting");
         loop {
             std::thread::sleep(Duration::from_millis(1500));

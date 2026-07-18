@@ -7,17 +7,8 @@ use eframe::egui;
 use crate::network::{AppState, get_local_ip, spawn_network_threads, MouseControlMsg};
 use crate::platform::{PlatformHandler, Edge};
 
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum Tab {
-    Receive,
-    Send,
-    LanMouse,
-    Settings,
-}
-
 pub struct JumpyApp {
     pub state: Arc<Mutex<AppState>>,
-    pub current_tab: Tab,
     pub selected_peer_id: Option<String>,
     pub sensitivity: f32,
     pub client_socket: UdpSocket,
@@ -114,7 +105,6 @@ impl JumpyApp {
 
         Self {
             state,
-            current_tab: Tab::Settings,
             selected_peer_id: None,
             sensitivity: 1.2,
             client_socket,
@@ -165,6 +155,12 @@ impl JumpyApp {
                             MouseControlMsg::ReturnControl => {
                                 let mut s = state.lock().unwrap();
                                 s.is_controlling_remote = false;
+                            }
+                            MouseControlMsg::ConnectNotification { host_name } => {
+                                let _ = notify_rust::Notification::new()
+                                    .summary("Jumpy Connected")
+                                    .body(&format!("{} is now controlling this machine.", host_name))
+                                    .show();
                             }
                         }
                     }

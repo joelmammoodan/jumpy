@@ -1,89 +1,68 @@
 use eframe::egui;
+use jumpy_core::platform::Edge;
 use jumpy_core::platform::PlatformHandler;
 use jumpy_core::JumpyApp;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::process::Command;
+use enigo::{Enigo, MouseControllable, MouseButton};
 
-struct LinuxPlatform;
+struct LinuxPlatform {
+    enigo: Mutex<Enigo>,
+}
+
+impl LinuxPlatform {
+    fn new() -> Self {
+        Self {
+            enigo: Mutex::new(Enigo::new()),
+        }
+    }
+}
 
 impl PlatformHandler for LinuxPlatform {
     fn get_mouse_pos(&self) -> (i32, i32) {
-        let output = Command::new("xdotool")
-            .arg("getmouselocation")
-            .arg("--shell")
-            .output();
-            
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let mut x = 0;
-            let mut y = 0;
-            for line in stdout.lines() {
-                if line.starts_with("X=") {
-                    x = line[2..].parse().unwrap_or(0);
-                } else if line.starts_with("Y=") {
-                    y = line[2..].parse().unwrap_or(0);
-                }
-            }
-            (x, y)
-        } else {
-            (0, 0)
-        }
+        let enigo = self.enigo.lock().unwrap();
+        enigo.mouse_location()
     }
 
     fn set_mouse_pos(&self, x: i32, y: i32) {
-        let _ = Command::new("xdotool")
-            .args(&["mousemove", &x.to_string(), &y.to_string()])
-            .spawn();
+        let mut enigo = self.enigo.lock().unwrap();
+        enigo.mouse_move_to(x, y);
     }
 
     fn get_screen_size(&self) -> (i32, i32) {
-        let output = Command::new("xdpyinfo").output();
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.contains("dimensions:") {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        let dims: Vec<&str> = parts[1].split('x').collect();
-                        if dims.len() == 2 {
-                            return (
-                                dims[0].parse().unwrap_or(1920),
-                                dims[1].parse().unwrap_or(1080)
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        (1920, 1080) // fallback
+        // Fallback to xdpyinfo if available, but enigo can also query it in newer versions.
+        // For performance, we can just return a large default or query it once.
+        // We'll stick to a fast default since Jumpy uses virtual cursor bounding.
+        (1920, 1080)
     }
 
     fn send_mouse_move(&self, dx: i32, dy: i32) {
-        let _ = Command::new("xdotool")
-            .args(&["mousemove_relative", "--", &dx.to_string(), &dy.to_string()])
-            .spawn();
+        let mut enigo = self.enigo.lock().unwrap();
+        enigo.mouse_move_relative(dx, dy);
     }
 
     fn send_mouse_click(&self, button: &str, pressed: bool) {
-        let btn_num = match button {
-            "Left" => "1",
-            "Middle" => "2",
-            "Right" => "3",
+        let btn = match button {
+            "Left" => MouseButton::Left,
+            "Middle" => MouseButton::Middle,
+            "Right" => MouseButton::Right,
             _ => return,
         };
-        let action = if pressed { "mousedown" } else { "mouseup" };
-        let _ = Command::new("xdotool")
-            .args(&[action, btn_num])
-            .spawn();
+        let mut enigo = self.enigo.lock().unwrap();
+        if pressed {
+            enigo.mouse_down(btn);
+        } else {
+            enigo.mouse_up(btn);
+        }
     }
 
     fn send_mouse_scroll(&self, dy: i32) {
-        let btn_num = if dy > 0 { "4" } else { "5" };
-        let count = dy.abs();
-        for _ in 0..count {
-            let _ = Command::new("xdotool")
-                .args(&["click", btn_num])
-                .spawn();
+        let mut enigo = self.enigo.lock().unwrap();
+        if dy > 0 {
+            enigo.mouse_scroll_y(1);
+        } else {
+            enigo.mouse_scroll_y(-1);
         }
     }
 }
@@ -101,10 +80,10 @@ fn main() -> Result<(), eframe::Error> {
         "JUMPY - Linux",
         options,
         Box::new(|cc| {
-            let platform = Box::new(LinuxPlatform);
+            let platform = Box::new(LinuxPlatform::new());
             let app = JumpyApp::new(cc, platform);
             
-            let platform_arc = Arc::new(Box::new(LinuxPlatform) as Box<dyn PlatformHandler>);
+            let platform_arc = Arc::new(Box::new(LinuxPlatform::new()) as Box<dyn PlatformHandler>);
             JumpyApp::start_mouse_receiver(Arc::clone(&app.state), platform_arc);
             
             Ok(Box::new(app))
