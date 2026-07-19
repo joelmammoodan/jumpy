@@ -122,7 +122,7 @@ pub fn spawn_network_threads(state: Arc<Mutex<AppState>>) {
         socket.set_broadcast(true).expect("Failed to enable broadcasting");
         
         loop {
-            std::thread::sleep(Duration::from_millis(1500));
+            std::thread::sleep(Duration::from_millis(1000));
             let msg = {
                 let s = b_state.lock().unwrap();
                 if !s.discovery_enabled {
@@ -189,9 +189,9 @@ pub fn spawn_network_threads(state: Arc<Mutex<AppState>>) {
             std::thread::sleep(Duration::from_secs(2));
             let mut s = p_state.lock().unwrap();
             let now = Instant::now();
-            // Drop any peers that haven't broadcasted in the last 5 seconds
+            // Drop any peers that haven't broadcasted in the last 15 seconds
             s.peers.retain(|_, peer| {
-                now.duration_since(peer.last_seen) < Duration::from_secs(5)
+                now.duration_since(peer.last_seen) < Duration::from_secs(15)
             });
         }
     });
