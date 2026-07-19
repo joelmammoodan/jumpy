@@ -18,17 +18,32 @@ impl LinuxPlatform {
             .stdin(std::process::Stdio::piped())
             .spawn();
             
-        let stdin = child.ok().and_then(|mut c| c.stdin.take()).map(Mutex::new);
-        
-        Self { xdotool_stdin: stdin }
+        match child {
+            Ok(mut c) => {
+                let stdin = c.stdin.take().map(Mutex::new);
+                Self { xdotool_stdin: stdin }
+            }
+            Err(e) => {
+                println!("Error: Failed to start xdotool! Is it installed? {:?}", e);
+                Self { xdotool_stdin: None }
+            }
+        }
     }
     
     fn send_cmd(&self, cmd: &str) {
         if let Some(stdin_mutex) = &self.xdotool_stdin {
             if let Ok(mut stdin) = stdin_mutex.lock() {
-                let _ = writeln!(stdin, "{}", cmd);
-                let _ = stdin.flush();
+                if let Err(e) = writeln!(stdin, "{}", cmd) {
+                    println!("Error: Failed to write to xdotool: {:?}", e);
+                }
+                if let Err(e) = stdin.flush() {
+                    println!("Error: Failed to flush xdotool: {:?}", e);
+                }
+            } else {
+                println!("Error: Failed to lock xdotool stdin mutex");
             }
+        } else {
+            // println!("Error: xdotool is not running"); // Too noisy to print every frame
         }
     }
 }
