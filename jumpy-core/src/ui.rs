@@ -6,9 +6,13 @@ use crate::platform::Edge;
 
 impl eframe::App for JumpyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Force the UI to refresh constantly so we get 60+ FPS for smooth mouse tracking
         ctx.request_repaint();
 
-        // 1. Check Edge Detection for Seamless Mode
+        // =========================================================
+        // 1. Edge Detection (Transitioning to Remote Mode)
+        // =========================================================
+        // Check if the hardware mouse has hit the user-configured edge of the physical screen.
         let is_controlling = {
             let s = self.state.lock().unwrap();
             s.is_controlling_remote
@@ -32,11 +36,13 @@ impl eframe::App for JumpyApp {
             }
 
             if hit {
+                // We hit the edge! Transition into Remote Control Mode.
                 let center_x = w / 2;
                 let center_y = h / 2;
                 {
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = true;
+                    // Calculate the starting position of the virtual cursor on the remote machine
                     match target_edge {
                         Edge::Left => { s.virtual_x = 1920.0; s.virtual_y = y as f32; }
                         Edge::Right => { s.virtual_x = 0.0; s.virtual_y = y as f32; }
@@ -46,15 +52,22 @@ impl eframe::App for JumpyApp {
                     }
                 }
                 println!("Action: Transitioned to Remote Mode at edge {:?}", target_edge);
+                
+                // Grab UI focus and lock the cursor so the OS doesn't move the real mouse anymore
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked));
+                
+                // Warp the physical mouse to the center of the screen so it has room to move
                 self.platform.set_mouse_pos(center_x, center_y);
                 self.last_x = center_x;
                 self.last_y = center_y;
             }
         }
 
-        // 2. If in Remote Mode, handle trapping and sending deltas
+        // =========================================================
+        // 2. Remote Mode Handling (Tracking & Sending Mouse Events)
+        // =========================================================
+        // If we are actively controlling another computer, calculate mouse deltas and send them.
         if self.state.lock().unwrap().is_controlling_remote {
             let (x, y) = self.platform.get_mouse_pos();
             let (w, h) = self.platform.get_screen_size();
@@ -113,10 +126,18 @@ impl eframe::App for JumpyApp {
                 }
 
                 if should_return {
+            // =========================================================
+            // 3. Returning Control to Host
+            // =========================================================
+            // The virtual cursor hit the remote edge, so we return to the host computer.
                     println!("Action: Returning control to host!");
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = false;
+                    
+                    // Release the OS mouse lock
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
+                    
+                    // Pop the mouse cursor out just inside the edge of the physical screen
                     let return_x = match s.remote_edge {
                         Edge::Left => 10,
                         Edge::Right => w - 10,
@@ -133,7 +154,8 @@ impl eframe::App for JumpyApp {
                 }
             }
 
-            // Only trap if we haven't exited, and we are near the edge
+            // Continuous Cursor Warping (Safety net)
+            // If the hardware cursor drifts too close to the real screen edge, warp it back to center
             if self.state.lock().unwrap().is_controlling_remote {
                 if x < 200 || x > w - 200 || y < 200 || y > h - 200 {
                     let center_x = w / 2;
@@ -144,6 +166,7 @@ impl eframe::App for JumpyApp {
                 }
             }
 
+            // Emergency Return (ESC Key)
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                 let mut s = self.state.lock().unwrap();
                 s.is_controlling_remote = false;
@@ -207,52 +230,125 @@ impl eframe::App for JumpyApp {
                     ui.separator();
                     ui.add_space(16.0);
                     
-                    // Network Devices Section
-                    ui.label(egui::RichText::new("Discovered Clients").strong().size(18.0).color(egui::Color32::WHITE));
-                    ui.add_space(8.0);
-                    
-                    let peers = {
-                        let s = self.state.lock().unwrap();
-                        s.peers.values().cloned().collect::<Vec<_>>()
-                    };
-                    
-                    if peers.is_empty() {
-                        ui.label(egui::RichText::new("Scanning network...").italics().color(egui::Color32::GRAY));
+                    if let Some(pairing_peer_id) = self.pairing_with_id.clone() {
+                        // =========================================================
+                        // PIN ENTRY SCREEN (Host Side)
+                        // =========================================================
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(40.0);
+                            ui.label(egui::RichText::new("Pairing Required").strong().size(24.0).color(egui::Color32::WHITE));
+                            ui.add_space(8.0);
+                            ui.label(egui::RichText::new("Look at the screen of the computer you are trying to control and enter the PIN displayed.").color(egui::Color32::GRAY));
+                            ui.add_space(20.0);
+                            
+                            ui.add(egui::TextEdit::singleline(&mut self.entered_pin)
+                                .font(egui::FontId::proportional(32.0))
+                                .horizontal_align(egui::Align::Center)
+                                .desired_width(200.0)
+                            );
+                            
+                            ui.add_space(20.0);
+                            ui.horizontal_centered(|ui| {
+                                if ui.button(egui::RichText::new("Cancel").size(18.0)).clicked() {
+                                    self.pairing_with_id = None;
+                                    self.entered_pin.clear();
+                                }
+                                ui.add_space(20.0);
+                                if ui.button(egui::RichText::new("Submit").size(18.0).color(primary)).clicked() {
+                                    // Send PairSubmit
+                                    let local_id = { self.state.lock().unwrap().local_id.clone() };
+                                    if let Some(peer) = { self.state.lock().unwrap().peers.get(&pairing_peer_id).cloned() } {
+                                        if let Ok(serialized) = serde_json::to_string(&MouseControlMsg::PairSubmit { 
+                                            host_id: local_id.clone(), 
+                                            pin: self.entered_pin.clone() 
+                                        }) {
+                                            let target = format!("{}:{}", peer.ip, peer.mouse_port);
+                                            let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+                                        }
+                                    }
+                                    
+                                    // Assume success and connect (if it failed, the client will just ignore us)
+                                    // We also add them to our own trusted_hosts so we don't ask for a PIN again.
+                                    {
+                                        let mut s = self.state.lock().unwrap();
+                                        s.trusted_hosts.insert(pairing_peer_id.clone());
+                                        crate::network::save_trusted_hosts(&s.trusted_hosts);
+                                    }
+                                    
+                                    self.selected_peer_id = Some(pairing_peer_id);
+                                    self.pairing_with_id = None;
+                                    self.entered_pin.clear();
+                                    
+                                    // Send connect notification
+                                    let host_name = local_name.clone();
+                                    self.send_mouse_msg(MouseControlMsg::ConnectNotification { host_name });
+                                }
+                            });
+                        });
                     } else {
-                        for peer in peers {
-                            ui.group(|ui| {
-                                ui.horizontal(|ui| {
-                                    ui.vertical(|ui| {
-                                        ui.label(egui::RichText::new(&peer.name).strong().color(egui::Color32::WHITE));
-                                        ui.label(egui::RichText::new(format!("IP: {}", peer.ip)).size(12.0).color(egui::Color32::GRAY));
-                                    });
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        let is_selected = self.selected_peer_id.as_ref() == Some(&peer.id);
-                                        if is_selected {
-                                            if ui.button("Disconnect").clicked() {
-                                                self.selected_peer_id = None;
-                                            }
-                                        } else {
-                                            if ui.button("Connect").clicked() {
-                                                self.selected_peer_id = Some(peer.id.clone());
-                                                
-                                                // Send Notification
-                                                let host_name = local_name.clone();
-                                                if let Ok(serialized) = serde_json::to_string(&MouseControlMsg::ConnectNotification { host_name }) {
-                                                    let target = format!("{}:{}", peer.ip, peer.mouse_port);
-                                                    let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+                        // Network Devices Section
+                        ui.label(egui::RichText::new("Discovered Clients").strong().size(18.0).color(egui::Color32::WHITE));
+                        ui.add_space(8.0);
+                        
+                        let peers = {
+                            let s = self.state.lock().unwrap();
+                            s.peers.values().cloned().collect::<Vec<_>>()
+                        };
+                        
+                        if peers.is_empty() {
+                            ui.label(egui::RichText::new("Scanning network...").italics().color(egui::Color32::GRAY));
+                        } else {
+                            for peer in peers {
+                                ui.group(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.vertical(|ui| {
+                                            ui.label(egui::RichText::new(&peer.name).strong().color(egui::Color32::WHITE));
+                                            ui.label(egui::RichText::new(format!("IP: {}", peer.ip)).size(12.0).color(egui::Color32::GRAY));
+                                        });
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            let is_selected = self.selected_peer_id.as_ref() == Some(&peer.id);
+                                            if is_selected {
+                                                if ui.button("Disconnect").clicked() {
+                                                    self.selected_peer_id = None;
+                                                }
+                                            } else {
+                                                if ui.button("Connect").clicked() {
+                                                    let is_trusted = {
+                                                        let s = self.state.lock().unwrap();
+                                                        s.trusted_hosts.contains(&peer.id)
+                                                    };
+                                                    
+                                                    if is_trusted {
+                                                        // Instantly connect
+                                                        self.selected_peer_id = Some(peer.id.clone());
+                                                        let host_name = local_name.clone();
+                                                        self.send_mouse_msg(MouseControlMsg::ConnectNotification { host_name });
+                                                    } else {
+                                                        // Require pairing
+                                                        self.pairing_with_id = Some(peer.id.clone());
+                                                        let local_id = { self.state.lock().unwrap().local_id.clone() };
+                                                        let host_name = local_name.clone();
+                                                        if let Ok(serialized) = serde_json::to_string(&MouseControlMsg::PairRequest { host_id: local_id, host_name }) {
+                                                            let target = format!("{}:{}", peer.ip, peer.mouse_port);
+                                                            let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+                                                        }
+                                                    }
                                                 }
                                             }
-                                        }
+                                        });
                                     });
                                 });
-                            });
-                            ui.add_space(4.0);
+                                ui.add_space(4.0);
+                            }
                         }
                     }
                 });
         } else {
-            // Render capture panel
+            // =========================================================
+            // 5. Remote Mode UI (Capture Panel)
+            // =========================================================
+            // When actively controlling the remote machine, we replace the entire UI
+            // with a blank capture panel that hides the mouse and consumes clicks.
             ctx.set_cursor_icon(egui::CursorIcon::None);
             
             egui::CentralPanel::default()
@@ -265,6 +361,7 @@ impl eframe::App for JumpyApp {
                             .strong());
                     });
                     
+                    // Allocate an invisible response area covering the entire window to catch clicks
                     let response = ui.allocate_response(ui.available_size(), egui::Sense::click_and_drag());
                     
                     if response.clicked() {
@@ -285,6 +382,41 @@ impl eframe::App for JumpyApp {
                     if scroll != 0.0 {
                         self.send_mouse_msg(MouseControlMsg::Scroll { dy: scroll });
                     }
+                });
+        }
+        
+        // =========================================================
+        // 6. Pairing Request Overlay (Client Side)
+        // =========================================================
+        // If a host wants to connect to us, we show the PIN prominently.
+        let (pending_pin, pending_host) = {
+            let s = self.state.lock().unwrap();
+            (s.pending_pair_pin.clone(), s.pending_pair_host_name.clone())
+        };
+        
+        if let (Some(pin), Some(host_name)) = (pending_pin, pending_host) {
+            egui::Window::new("Pairing Request")
+                .fixed_pos(egui::pos2(0.0, 0.0))
+                .fixed_size(ctx.screen_rect().size())
+                .title_bar(false)
+                .frame(egui::Frame::none().fill(egui::Color32::from_black_alpha(240)))
+                .show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.label(egui::RichText::new(format!("{} wants to connect", host_name)).size(32.0).color(egui::Color32::WHITE));
+                            ui.add_space(20.0);
+                            ui.label(egui::RichText::new("Enter this PIN on the host device:").size(24.0).color(egui::Color32::GRAY));
+                            ui.add_space(10.0);
+                            ui.label(egui::RichText::new(&pin).size(80.0).strong().color(primary));
+                            ui.add_space(40.0);
+                            if ui.button(egui::RichText::new("Reject").size(24.0)).clicked() {
+                                let mut s = self.state.lock().unwrap();
+                                s.pending_pair_pin = None;
+                                s.pending_pair_host = None;
+                                s.pending_pair_host_name = None;
+                            }
+                        });
+                    });
                 });
         }
     }

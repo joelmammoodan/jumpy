@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 jumpy-core = { path = "../jumpy-core" }
 eframe = "0.28.1"
-rdev = "0.5.3"
+evdev = "0.12"
