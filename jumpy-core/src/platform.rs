@@ -39,4 +39,8 @@ pub trait PlatformHandler: Send + Sync {
     
     /// Get the raw hardware delta accumulated by the global hook. Returns (dx, dy) and resets the accumulator.
     fn get_raw_delta(&self) -> (f64, f64) { (0.0, 0.0) }
+    
+    /// Returns true if the UI should calculate mouse deltas by continuously polling get_mouse_pos().
+    /// Returns false if the platform uses get_grabbed_events() to natively emit Move messages.
+    fn uses_polling_capture(&self) -> bool { true }
 }

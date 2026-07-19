@@ -268,6 +268,8 @@ impl PlatformHandler for LinuxPlatform {
         }
         events
     }
+    
+    fn uses_polling_capture(&self) -> bool { false }
 }
 
 fn test_hyprctl_startup() {

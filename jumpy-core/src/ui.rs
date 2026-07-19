@@ -102,18 +102,22 @@ impl eframe::App for JumpyApp {
         // =========================================================
         // If we are actively controlling another computer, calculate mouse deltas and send them.
         if self.state.lock().unwrap().is_controlling_remote {
-            let (x, y) = self.platform.get_mouse_pos();
-            let (w, h) = self.platform.get_screen_size();
-            let cx = self.last_x;
-            let cy = self.last_y;
+            // Calculate delta from the center of the screen if polling is required
+            let mut dx = 0;
+            let mut dy = 0;
             
-            // Calculate delta from the center of the screen
-            let mut dx = x - cx;
-            let mut dy = y - cy;
-            
-            // Instantly snap the cursor back to the center of the screen so it has room to move next frame
-            if dx != 0 || dy != 0 {
-                self.platform.set_mouse_pos(cx, cy);
+            if self.platform.uses_polling_capture() {
+                let (x, y) = self.platform.get_mouse_pos();
+                let cx = self.last_x;
+                let cy = self.last_y;
+                
+                dx = x - cx;
+                dy = y - cy;
+                
+                // Instantly snap the cursor back to the center of the screen so it has room to move next frame
+                if dx != 0 || dy != 0 {
+                    self.platform.set_mouse_pos(cx, cy);
+                }
             }
             
             // Ignore massive jumps (e.g. from the initial warp to the center)
