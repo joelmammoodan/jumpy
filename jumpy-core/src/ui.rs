@@ -178,6 +178,7 @@ impl eframe::App for JumpyApp {
                             let scaled_dy = *dy * self.sensitivity;
                             s.virtual_x = (s.virtual_x + scaled_dx).clamp(-100.0, 3840.0 + 100.0);
                             s.virtual_y = (s.virtual_y + scaled_dy).clamp(-100.0, 2160.0 + 100.0);
+                            println!("Action: Forwarding Mouse Move (dx: {}, dy: {}) -> Virtual ({}, {})", dx, dy, s.virtual_x, s.virtual_y);
                             self.send_mouse_msg(ev);
                         },
                         _ => {
