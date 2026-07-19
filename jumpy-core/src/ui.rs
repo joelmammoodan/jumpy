@@ -146,8 +146,9 @@ impl eframe::App for JumpyApp {
                         dy: send_dy 
                     });
                 }
+            }
 
-                let mut should_return = false;
+            let mut should_return = false;
                 {
                     let mut s = self.state.lock().unwrap();
                     // Clamp the virtual cursor so it doesn't run away to infinity if the user
@@ -178,7 +179,7 @@ impl eframe::App for JumpyApp {
                             let scaled_dy = *dy * self.sensitivity;
                             s.virtual_x = (s.virtual_x + scaled_dx).clamp(-100.0, 3840.0 + 100.0);
                             s.virtual_y = (s.virtual_y + scaled_dy).clamp(-100.0, 2160.0 + 100.0);
-                            // println!("Action: Forwarding Mouse Move (dx: {}, dy: {}) -> Virtual ({}, {})", dx, dy, s.virtual_x, s.virtual_y);
+                            println!("Action: Forwarding Mouse Move (dx: {}, dy: {}) -> Virtual ({}, {})", dx, dy, s.virtual_x, s.virtual_y);
                             
                             // CRITICAL: We must drop the state lock before calling send_mouse_msg,
                             // because send_mouse_msg will try to acquire it again, causing a deadlock!
@@ -239,7 +240,6 @@ impl eframe::App for JumpyApp {
                     self.last_x = return_x;
                     self.last_y = return_y;
                 }
-            }
 
             // Emergency Return (ESC Key)
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
