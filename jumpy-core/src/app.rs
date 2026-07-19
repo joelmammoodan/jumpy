@@ -187,7 +187,6 @@ impl JumpyApp {
                         Ok(msg) => match msg {
                             // Security Enforcement: Only process movement from trusted hosts
                             MouseControlMsg::Move { dx, dy } => {
-                                println!("Action: Executing Move (dx: {}, dy: {})", dx, dy);
                                 platform.send_mouse_move(dx as i32, dy as i32);
                             }
                             MouseControlMsg::Click { button, pressed } => {
@@ -291,18 +290,11 @@ impl JumpyApp {
             if let Some(peer) = peer_opt {
                 if let Ok(serialized) = serde_json::to_string(&msg) {
                     let target = format!("{}:{}", peer.ip, peer.mouse_port);
-                    println!("Action: Sending to {} -> {}", target, serialized);
-                    
-                    // Fire-and-forget the serialized JSON command over the UDP socket
                     let res = self.client_socket.send_to(serialized.as_bytes(), target);
-                    if let Err(e) = res {
-                        println!("Action: Failed to send UDP packet: {:?}", e);
+                    if let Err(_) = res {
+                        // Silently ignore UDP send errors to avoid log spam when peer disconnects
                     }
-                } else {
-                    println!("Action: Failed to serialize msg");
                 }
-            } else {
-                println!("Action: Peer {} not found in state", peer_id);
             }
         }
     }

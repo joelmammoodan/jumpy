@@ -124,7 +124,6 @@ impl eframe::App for JumpyApp {
             
             // Ignore massive jumps (e.g. from the initial warp to the center)
             if dx.abs() > 500 || dy.abs() > 500 {
-                println!("Action: Ignored massive jump (dx: {}, dy: {})", dx, dy);
                 dx = 0;
                 dy = 0;
             }
@@ -175,7 +174,6 @@ impl eframe::App for JumpyApp {
                             let scaled_dy = *dy * self.sensitivity;
                             s.virtual_x = (s.virtual_x + scaled_dx).clamp(-100.0, 3840.0 + 100.0);
                             s.virtual_y = (s.virtual_y + scaled_dy).clamp(-100.0, 2160.0 + 100.0);
-                            println!("Action: Forwarding Mouse Move (dx: {}, dy: {}) -> Virtual ({}, {})", dx, dy, s.virtual_x, s.virtual_y);
                             
                             // CRITICAL: We must drop the state lock before calling send_mouse_msg,
                             // because send_mouse_msg will try to acquire it again, causing a deadlock!
@@ -299,17 +297,7 @@ impl eframe::App for JumpyApp {
                         self.state.lock().unwrap().remote_edge = current_edge;
                     }
                     
-                    ui.add_space(16.0);
-                    // DEBUG OVERLAY
-                    let (mx, my) = self.platform.get_mouse_pos();
-                    let (sw, sh) = self.platform.get_screen_size();
-                    ui.label(egui::RichText::new("Debug Diagnostics:").color(egui::Color32::YELLOW));
-                    ui.label(format!("Detected Mouse Pos: x={}, y={}", mx, my));
-                    ui.label(format!("Detected Screen Size: w={}, h={}", sw, sh));
-                    
                     ui.add_space(24.0);
-                    ui.separator();
-                    ui.add_space(16.0);
                     
                     if let Some(pairing_peer_id) = self.pairing_with_id.clone() {
                         // =========================================================
@@ -317,25 +305,25 @@ impl eframe::App for JumpyApp {
                         // =========================================================
                         ui.vertical_centered(|ui| {
                             ui.add_space(40.0);
-                            ui.label(egui::RichText::new("Pairing Required").strong().size(24.0).color(egui::Color32::WHITE));
+                            ui.label(egui::RichText::new("Pairing Required").strong().size(28.0).color(egui::Color32::WHITE));
                             ui.add_space(8.0);
                             ui.label(egui::RichText::new("Look at the screen of the computer you are trying to control and enter the PIN displayed.").color(egui::Color32::GRAY));
-                            ui.add_space(20.0);
+                            ui.add_space(30.0);
                             
                             ui.add(egui::TextEdit::singleline(&mut self.entered_pin)
-                                .font(egui::FontId::proportional(32.0))
+                                .font(egui::FontId::proportional(36.0))
                                 .horizontal_align(egui::Align::Center)
-                                .desired_width(200.0)
+                                .desired_width(220.0)
                             );
                             
-                            ui.add_space(20.0);
+                            ui.add_space(30.0);
                             ui.horizontal_centered(|ui| {
-                                if ui.button(egui::RichText::new("Cancel").size(18.0)).clicked() {
+                                if ui.button(egui::RichText::new("Cancel").size(20.0)).clicked() {
                                     self.pairing_with_id = None;
                                     self.entered_pin.clear();
                                 }
-                                ui.add_space(20.0);
-                                if ui.button(egui::RichText::new("Submit").size(18.0).color(primary)).clicked() {
+                                ui.add_space(30.0);
+                                if ui.button(egui::RichText::new("Submit").size(20.0).color(primary)).clicked() {
                                     // Send PairSubmit
                                     let local_id = { self.state.lock().unwrap().local_id.clone() };
                                     if let Some(peer) = { self.state.lock().unwrap().peers.get(&pairing_peer_id).cloned() } {
@@ -368,8 +356,18 @@ impl eframe::App for JumpyApp {
                         });
                     } else {
                         // Network Devices Section
-                        ui.label(egui::RichText::new("Discovered Clients").strong().size(18.0).color(egui::Color32::WHITE));
-                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Discovered Devices").strong().size(22.0).color(egui::Color32::WHITE));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("🔄 Refresh").clicked() {
+                                    let mut s = self.state.lock().unwrap();
+                                    s.peers.clear();
+                                    self.selected_peer_id = None;
+                                }
+                            });
+                        });
+                        
+                        ui.add_space(12.0);
                         
                         let peers = {
                             let s = self.state.lock().unwrap();
@@ -377,50 +375,58 @@ impl eframe::App for JumpyApp {
                         };
                         
                         if peers.is_empty() {
-                            ui.label(egui::RichText::new("Scanning network...").italics().color(egui::Color32::GRAY));
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(40.0);
+                                ui.label(egui::RichText::new("Scanning network for Jumpy devices...").italics().size(16.0).color(egui::Color32::GRAY));
+                                ui.add_space(10.0);
+                                ui.spinner();
+                            });
                         } else {
-                            for peer in peers {
-                                ui.group(|ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.vertical(|ui| {
-                                            ui.label(egui::RichText::new(&peer.name).strong().color(egui::Color32::WHITE));
-                                            ui.label(egui::RichText::new(format!("IP: {}", peer.ip)).size(12.0).color(egui::Color32::GRAY));
-                                        });
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                            let is_selected = self.selected_peer_id.as_ref() == Some(&peer.id);
-                                            if is_selected {
-                                                if ui.button("Disconnect").clicked() {
-                                                    self.selected_peer_id = None;
-                                                }
-                                            } else {
-                                                if ui.button("Connect").clicked() {
-                                                    let is_trusted = {
-                                                        let s = self.state.lock().unwrap();
-                                                        s.trusted_hosts.contains(&peer.id)
-                                                    };
-                                                    
-                                                    if is_trusted {
-                                                        // Instantly connect
-                                                        self.selected_peer_id = Some(peer.id.clone());
-                                                        let host_name = local_name.clone();
-                                                        self.send_mouse_msg(MouseControlMsg::ConnectNotification { host_name });
-                                                    } else {
-                                                        // Require pairing
-                                                        self.pairing_with_id = Some(peer.id.clone());
-                                                        let local_id = { self.state.lock().unwrap().local_id.clone() };
-                                                        let host_name = local_name.clone();
-                                                        if let Ok(serialized) = serde_json::to_string(&MouseControlMsg::PairRequest { host_id: local_id, host_name }) {
-                                                            let target = format!("{}:{}", peer.ip, peer.mouse_port);
-                                                            let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+                            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                                for peer in peers {
+                                    ui.group(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.vertical(|ui| {
+                                                ui.label(egui::RichText::new(&peer.name).strong().size(18.0).color(egui::Color32::WHITE));
+                                                ui.add_space(4.0);
+                                                ui.label(egui::RichText::new(format!("IP: {}", peer.ip)).size(14.0).color(egui::Color32::GRAY));
+                                            });
+                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                let is_selected = self.selected_peer_id.as_ref() == Some(&peer.id);
+                                                if is_selected {
+                                                    if ui.button(egui::RichText::new("Disconnect").size(16.0)).clicked() {
+                                                        self.selected_peer_id = None;
+                                                    }
+                                                } else {
+                                                    if ui.button(egui::RichText::new("Connect").size(16.0).color(primary)).clicked() {
+                                                        let is_trusted = {
+                                                            let s = self.state.lock().unwrap();
+                                                            s.trusted_hosts.contains(&peer.id)
+                                                        };
+                                                        
+                                                        if is_trusted {
+                                                            // Instantly connect
+                                                            self.selected_peer_id = Some(peer.id.clone());
+                                                            let host_name = local_name.clone();
+                                                            self.send_mouse_msg(MouseControlMsg::ConnectNotification { host_name });
+                                                        } else {
+                                                            // Require pairing
+                                                            self.pairing_with_id = Some(peer.id.clone());
+                                                            let local_id = { self.state.lock().unwrap().local_id.clone() };
+                                                            let host_name = local_name.clone();
+                                                            if let Ok(serialized) = serde_json::to_string(&MouseControlMsg::PairRequest { host_id: local_id, host_name }) {
+                                                                let target = format!("{}:{}", peer.ip, peer.mouse_port);
+                                                                let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+                                                            }
                                                         }
                                                     }
                                                 }
-                                            }
+                                            });
                                         });
                                     });
-                                });
-                                ui.add_space(4.0);
-                            }
+                                    ui.add_space(8.0);
+                                }
+                            });
                         }
                     }
                 });
