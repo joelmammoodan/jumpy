@@ -123,7 +123,7 @@ impl JumpyApp {
         }
     }
 
-    pub fn start_mouse_receiver(state: Arc<Mutex<AppState>>, platform: Arc<Box<dyn PlatformHandler>>) {
+    pub fn start_mouse_receiver(state: Arc<Mutex<AppState>>, platform: Arc<dyn PlatformHandler + Send + Sync>) {
         let (mouse_socket, port) = {
             let s = state.lock().unwrap();
             let port = s.mouse_port;
@@ -143,8 +143,7 @@ impl JumpyApp {
                         continue;
                     }
                     match serde_json::from_slice::<MouseControlMsg>(&buf[..amt]) {
-                        Ok(msg) => {
-                            match msg {
+                        Ok(msg) => match msg {
                             MouseControlMsg::Move { dx, dy } => {
                                 println!("Action: Received Mouse Move (dx: {:.2}, dy: {:.2})", dx, dy);
                                 platform.send_mouse_move(dx as i32, dy as i32);
@@ -169,7 +168,7 @@ impl JumpyApp {
                                     .body(&format!("{} is now controlling this machine.", host_name))
                                     .show();
                             }
-                        }
+                        },
                         Err(e) => {
                             println!("Action: Failed to deserialize msg from {}: {:?}", src, e);
                         }

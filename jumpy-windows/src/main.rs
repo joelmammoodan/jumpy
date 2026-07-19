@@ -101,7 +101,7 @@ fn main() -> Result<(), eframe::Error> {
             let app = JumpyApp::new(cc, platform);
             
             // Start the receiver in background
-            let platform_arc = Arc::new(Box::new(WindowsPlatform) as Box<dyn PlatformHandler>);
+            let platform_arc = Arc::new(WindowsPlatform) as Arc<dyn PlatformHandler + Send + Sync>;
             JumpyApp::start_mouse_receiver(Arc::clone(&app.state), platform_arc);
             
             Ok(Box::new(app))
