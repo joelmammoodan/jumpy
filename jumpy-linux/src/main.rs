@@ -199,7 +199,9 @@ impl PlatformHandler for LinuxPlatform {
                     for entry in entries.flatten() {
                         if let Ok(mut dev) = evdev::Device::open(entry.path()) {
                             if dev.supported_keys().map_or(false, |k| k.contains(evdev::Key::BTN_LEFT) || k.contains(evdev::Key::KEY_A)) {
-                                if dev.grab().is_ok() {
+                                if let Err(e) = dev.grab() {
+                                    println!("Action: Failed to grab device {:?}: {:?}", entry.path(), e);
+                                } else {
                                     let fd = dev.as_raw_fd();
                                     unsafe {
                                         let flags = libc::fcntl(fd, libc::F_GETFL);
@@ -211,6 +213,7 @@ impl PlatformHandler for LinuxPlatform {
                         }
                     }
                 }
+                println!("Action: Successfully grabbed {} input devices", grabbed_devices.len());
                 
                 while kr.load(Ordering::SeqCst) {
                     for dev in grabbed_devices.iter_mut() {
