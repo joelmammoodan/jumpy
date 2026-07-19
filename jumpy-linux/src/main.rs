@@ -215,6 +215,9 @@ impl PlatformHandler for LinuxPlatform {
                 }
                 println!("Action: Successfully grabbed {} input devices", grabbed_devices.len());
                 
+                let mut last_abs_x: Option<i32> = None;
+                let mut last_abs_y: Option<i32> = None;
+                
                 while kr.load(Ordering::SeqCst) {
                     for dev in grabbed_devices.iter_mut() {
                         if let Ok(events) = dev.fetch_events() {
@@ -229,10 +232,31 @@ impl PlatformHandler for LinuxPlatform {
                                             tx.send(MouseControlMsg::Scroll { dy: ev.value() as f32 }).unwrap();
                                         }
                                     },
+                                    EventType::ABSOLUTE => {
+                                        if ev.code() == 0 /* ABS_X */ {
+                                            if let Some(last_x) = last_abs_x {
+                                                let dx = ev.value() - last_x;
+                                                // Touchpad coordinates are often high resolution. Scale it slightly.
+                                                tx.send(MouseControlMsg::Move { dx: (dx as f32) * 0.2, dy: 0.0 }).unwrap();
+                                            }
+                                            last_abs_x = Some(ev.value());
+                                        } else if ev.code() == 1 /* ABS_Y */ {
+                                            if let Some(last_y) = last_abs_y {
+                                                let dy = ev.value() - last_y;
+                                                tx.send(MouseControlMsg::Move { dx: 0.0, dy: (dy as f32) * 0.2 }).unwrap();
+                                            }
+                                            last_abs_y = Some(ev.value());
+                                        }
+                                    },
                                     EventType::KEY => {
                                         let key_code = ev.code();
                                         let down = ev.value() != 0;
-                                        if key_code == Key::BTN_LEFT.code() {
+                                        if key_code == 330 /* BTN_TOUCH */ {
+                                            if !down {
+                                                last_abs_x = None;
+                                                last_abs_y = None;
+                                            }
+                                        } else if key_code == Key::BTN_LEFT.code() {
                                             tx.send(MouseControlMsg::Click { button: "Left".to_string(), pressed: down }).unwrap();
                                         } else if key_code == Key::BTN_RIGHT.code() {
                                             tx.send(MouseControlMsg::Click { button: "Right".to_string(), pressed: down }).unwrap();
