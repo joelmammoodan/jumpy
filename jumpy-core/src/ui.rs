@@ -39,8 +39,18 @@ impl eframe::App for JumpyApp {
                 // We hit the edge! Transition into Remote Control Mode.
                 
                 // We lock the cursor exactly where it hit the edge of the screen!
-                let warp_x = x;
-                let warp_y = y;
+                // We shift the anchor slightly inward to prevent Windows from violently
+                // clamping the cursor against the physical monitor bounds, which causes infinite delta spam.
+                let mut warp_x = x;
+                let mut warp_y = y;
+                
+                match target_edge {
+                    Edge::Left => warp_x += 20,
+                    Edge::Right => warp_x -= 20,
+                    Edge::Top => warp_y += 20,
+                    Edge::Bottom => warp_y -= 20,
+                    _ => {}
+                }
                 
                 {
                     let mut s = self.state.lock().unwrap();
