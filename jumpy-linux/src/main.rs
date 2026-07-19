@@ -55,7 +55,19 @@ impl LinuxPlatform {
 
 impl PlatformHandler for LinuxPlatform {
     fn get_mouse_pos(&self) -> (i32, i32) {
-        if let Ok(output) = std::process::Command::new("hyprctl").arg("cursorpos").output() {
+        // Retrieve the current user's UID to find the Hyprland instance signature if running under sudo
+        let uid = std::process::Command::new("id").arg("-u").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_else(|_| "1000".to_string());
+        
+        // Pass the environment variables explicitly in case we are running under sudo
+        let mut cmd = std::process::Command::new("hyprctl");
+        cmd.arg("cursorpos");
+        
+        // Inherit or discover the hyprland instance if possible
+        if let Ok(sig) = std::env::var("HYPRLAND_INSTANCE_SIGNATURE") {
+            cmd.env("HYPRLAND_INSTANCE_SIGNATURE", sig);
+        }
+
+        if let Ok(output) = cmd.output() {
             let s = String::from_utf8_lossy(&output.stdout);
             let parts: Vec<&str> = s.trim().split(',').collect();
             if parts.len() == 2 {
@@ -63,6 +75,9 @@ impl PlatformHandler for LinuxPlatform {
                     return (x, y);
                 }
             }
+        } else {
+            // Print error periodically?
+            // println!("Failed to execute hyprctl cursorpos");
         }
         (0, 0)
     }
@@ -76,6 +91,33 @@ impl PlatformHandler for LinuxPlatform {
     }
 
     fn get_screen_size(&self) -> (i32, i32) {
+        let mut cmd = std::process::Command::new("hyprctl");
+        cmd.arg("monitors");
+        if let Ok(sig) = std::env::var("HYPRLAND_INSTANCE_SIGNATURE") {
+            cmd.env("HYPRLAND_INSTANCE_SIGNATURE", sig);
+        }
+        
+        if let Ok(output) = cmd.output() {
+            let s = String::from_utf8_lossy(&output.stdout);
+            // Example:
+            // Monitor DP-1 (ID 0):
+            // 2560x1440@144.00101 at 0x0
+            for line in s.lines() {
+                if let Some(pos) = line.find("x") {
+                    if line.contains("@") && line.contains(" at ") {
+                        let parts: Vec<&str> = line.trim().split_whitespace().collect();
+                        if let Some(res_str) = parts.first() {
+                            let res_parts: Vec<&str> = res_str.split('@').next().unwrap_or("").split('x').collect();
+                            if res_parts.len() == 2 {
+                                if let (Ok(w), Ok(h)) = (res_parts[0].parse::<i32>(), res_parts[1].parse::<i32>()) {
+                                    return (w, h);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         (1920, 1080)
     }
 
