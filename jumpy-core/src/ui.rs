@@ -44,11 +44,29 @@ impl eframe::App for JumpyApp {
                 let mut warp_x = x;
                 let mut warp_y = y;
                 
+                // When we transition, we want the remote cursor to start at the opposite edge
+                // of the screen, preserving the perpendicular coordinate.
                 match target_edge {
-                    Edge::Left => warp_x += 20,
-                    Edge::Right => warp_x -= 20,
-                    Edge::Top => warp_y += 20,
-                    Edge::Bottom => warp_y -= 20,
+                    Edge::Left => {
+                        warp_x += 20;
+                        self.send_mouse_msg(MouseControlMsg::Move { dx: 30000.0, dy: -30000.0 });
+                        self.send_mouse_msg(MouseControlMsg::Move { dx: 0.0, dy: y as f32 });
+                    }
+                    Edge::Right => {
+                        warp_x -= 20;
+                        self.send_mouse_msg(MouseControlMsg::Move { dx: -30000.0, dy: -30000.0 });
+                        self.send_mouse_msg(MouseControlMsg::Move { dx: 0.0, dy: y as f32 });
+                    }
+                    Edge::Top => {
+                        warp_y += 20;
+                        self.send_mouse_msg(MouseControlMsg::Move { dx: -30000.0, dy: 30000.0 });
+                        self.send_mouse_msg(MouseControlMsg::Move { dx: x as f32, dy: 0.0 });
+                    }
+                    Edge::Bottom => {
+                        warp_y -= 20;
+                        self.send_mouse_msg(MouseControlMsg::Move { dx: -30000.0, dy: -30000.0 });
+                        self.send_mouse_msg(MouseControlMsg::Move { dx: x as f32, dy: 0.0 });
+                    }
                     _ => {}
                 }
                 
