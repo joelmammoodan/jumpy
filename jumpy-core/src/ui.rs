@@ -42,10 +42,13 @@ impl eframe::App for JumpyApp {
                 let mut warp_x = w / 2;
                 let mut warp_y = h / 2;
                 
+                let ppp = ctx.pixels_per_point();
                 ctx.input(|i| {
                     if let Some(outer_rect) = i.viewport().outer_rect {
-                        warp_x = outer_rect.center().x as i32;
-                        warp_y = outer_rect.center().y as i32;
+                        // outer_rect is in logical points! We MUST multiply by DPI scaling
+                        // so SetCursorPos (which takes physical pixels) hits the window exactly!
+                        warp_x = (outer_rect.center().x * ppp) as i32;
+                        warp_y = (outer_rect.center().y * ppp) as i32;
                     }
                 });
                 
