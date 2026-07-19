@@ -68,12 +68,21 @@ impl eframe::App for JumpyApp {
             } else if dx != 0 || dy != 0 {
                 let scaled_dx = (dx as f32) * self.sensitivity;
                 let scaled_dy = (dy as f32) * self.sensitivity;
+                self.accum_x += scaled_dx;
+                self.accum_y += scaled_dy;
+                let send_dx = self.accum_x.trunc();
+                let send_dy = self.accum_y.trunc();
+                self.accum_x -= send_dx;
+                self.accum_y -= send_dy;
 
-                println!("Action: Sending Mouse Move (dx: {:.2}, dy: {:.2})", scaled_dx, scaled_dy);
-                self.send_mouse_msg(MouseControlMsg::Move { 
-                    dx: scaled_dx, 
-                    dy: scaled_dy 
-                });
+                if send_dx != 0.0 || send_dy != 0.0 {
+                    println!("Action: Sending Mouse Move (dx: {:.2}, dy: {:.2})", send_dx, send_dy);
+                    self.send_mouse_msg(MouseControlMsg::Move { 
+                        dx: send_dx, 
+                        dy: send_dy 
+                    });
+                }
+                
                 self.last_x = x;
                 self.last_y = y;
 

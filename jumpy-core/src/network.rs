@@ -116,7 +116,7 @@ pub fn spawn_network_threads(state: Arc<Mutex<AppState>>) {
                             let peer = PeerDevice {
                                 id: msg.id.clone(),
                                 name: msg.name,
-                                ip: msg.ip,
+                                ip: src.ip().to_string(), // Use the actual source IP instead of self-reported
                                 mouse_port: msg.mouse_port,
                                 device_type: msg.device_type,
                                 last_seen: Instant::now(),

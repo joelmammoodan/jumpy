@@ -124,16 +124,17 @@ impl JumpyApp {
     }
 
     pub fn start_mouse_receiver(state: Arc<Mutex<AppState>>, platform: Arc<Box<dyn PlatformHandler>>) {
-        let (mouse_socket, _) = {
+        let (mouse_socket, port) = {
             let s = state.lock().unwrap();
             let port = s.mouse_port;
             (UdpSocket::bind(format!("0.0.0.0:{}", port)).unwrap(), port)
         };
+        println!("Action: Mouse receiver listening on 0.0.0.0:{}", port);
 
         std::thread::spawn(move || {
             let mut buf = [0u8; 1024];
             loop {
-                if let Ok((amt, _src)) = mouse_socket.recv_from(&mut buf) {
+                if let Ok((amt, src)) = mouse_socket.recv_from(&mut buf) {
                     let is_active = {
                         let s = state.lock().unwrap();
                         s.is_receiver_active
@@ -141,8 +142,9 @@ impl JumpyApp {
                     if !is_active {
                         continue;
                     }
-                    if let Ok(msg) = serde_json::from_slice::<MouseControlMsg>(&buf[..amt]) {
-                        match msg {
+                    match serde_json::from_slice::<MouseControlMsg>(&buf[..amt]) {
+                        Ok(msg) => {
+                            match msg {
                             MouseControlMsg::Move { dx, dy } => {
                                 println!("Action: Received Mouse Move (dx: {:.2}, dy: {:.2})", dx, dy);
                                 platform.send_mouse_move(dx as i32, dy as i32);
@@ -168,6 +170,9 @@ impl JumpyApp {
                                     .show();
                             }
                         }
+                        Err(e) => {
+                            println!("Action: Failed to deserialize msg from {}: {:?}", src, e);
+                        }
                     }
                 }
             }
@@ -187,8 +192,16 @@ impl JumpyApp {
             if let Some(peer) = peer_opt {
                 if let Ok(serialized) = serde_json::to_string(&msg) {
                     let target = format!("{}:{}", peer.ip, peer.mouse_port);
-                    let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+                    println!("Action: Sending to {} -> {}", target, serialized);
+                    let res = self.client_socket.send_to(serialized.as_bytes(), target);
+                    if let Err(e) = res {
+                        println!("Action: Failed to send UDP packet: {:?}", e);
+                    }
+                } else {
+                    println!("Action: Failed to serialize msg");
                 }
+            } else {
+                println!("Action: Peer {} not found in state", peer_id);
             }
         }
     }
