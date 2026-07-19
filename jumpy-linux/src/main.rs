@@ -5,9 +5,13 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use evdev::uinput::{VirtualDeviceBuilder, VirtualDevice};
 use evdev::{AttributeSet, EventType, InputEvent, RelativeAxisType, Key};
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use jumpy_core::network::MouseControlMsg;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 struct LinuxPlatform {
     device: Option<Mutex<VirtualDevice>>,
+    capturing: Mutex<Option<(Arc<AtomicBool>, Receiver<MouseControlMsg>)>>,
 }
 
 impl LinuxPlatform {
@@ -40,10 +44,10 @@ impl LinuxPlatform {
         };
         
         match device {
-            Ok(dev) => Self { device: Some(Mutex::new(dev)) },
+            Ok(dev) => Self { device: Some(Mutex::new(dev)), capturing: Mutex::new(None) },
             Err(e) => {
                 println!("Error: Failed to create uinput device. You need permission to write to /dev/uinput. Error: {:?}", e);
-                Self { device: None }
+                Self { device: None, capturing: Mutex::new(None) }
             }
         }
     }
@@ -51,12 +55,24 @@ impl LinuxPlatform {
 
 impl PlatformHandler for LinuxPlatform {
     fn get_mouse_pos(&self) -> (i32, i32) {
-        // Wayland blocks getting global coords anyway. Returning (0,0) is fine for the client receiver.
+        if let Ok(output) = std::process::Command::new("hyprctl").arg("cursorpos").output() {
+            let s = String::from_utf8_lossy(&output.stdout);
+            let parts: Vec<&str> = s.trim().split(',').collect();
+            if parts.len() == 2 {
+                if let (Ok(x), Ok(y)) = (parts[0].trim().parse::<i32>(), parts[1].trim().parse::<i32>()) {
+                    return (x, y);
+                }
+            }
+        }
         (0, 0)
     }
 
-    fn set_mouse_pos(&self, _x: i32, _y: i32) {
-        // Not used by the client receiver
+    fn set_mouse_pos(&self, x: i32, y: i32) {
+        let _ = std::process::Command::new("hyprctl")
+            .arg("dispatch")
+            .arg("movecursor")
+            .arg(format!("{},{}", x, y))
+            .output();
     }
 
     fn get_screen_size(&self) -> (i32, i32) {
@@ -116,6 +132,90 @@ impl PlatformHandler for LinuxPlatform {
                 ]);
             }
         }
+    }
+    
+    fn set_capture_mode(&self, active: bool, cx: i32, cy: i32) {
+        let mut capt = self.capturing.lock().unwrap();
+        if active {
+            if capt.is_some() { return; }
+            
+            self.set_mouse_pos(cx, cy);
+                
+            let (tx, rx) = unbounded();
+            let keep_running = Arc::new(AtomicBool::new(true));
+            let kr = Arc::clone(&keep_running);
+            
+            *capt = Some((keep_running, rx));
+            
+            std::thread::spawn(move || {
+                let mut grabbed_devices = Vec::new();
+                if let Ok(entries) = std::fs::read_dir("/dev/input") {
+                    for entry in entries.flatten() {
+                        if let Ok(mut dev) = evdev::Device::open(entry.path()) {
+                            if dev.supported_keys().map_or(false, |k| k.contains(evdev::Key::BTN_LEFT) || k.contains(evdev::Key::KEY_A)) {
+                                if dev.grab().is_ok() {
+                                    grabbed_devices.push(dev);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                while kr.load(Ordering::SeqCst) {
+                    for dev in grabbed_devices.iter_mut() {
+                        if let Ok(events) = dev.fetch_events() {
+                            for ev in events {
+                                match ev.event_type() {
+                                    EventType::RELATIVE => {
+                                        if ev.code() == RelativeAxisType::REL_X.0 {
+                                            tx.send(MouseControlMsg::Move { dx: ev.value() as f32, dy: 0.0 }).unwrap();
+                                        } else if ev.code() == RelativeAxisType::REL_Y.0 {
+                                            tx.send(MouseControlMsg::Move { dx: 0.0, dy: ev.value() as f32 }).unwrap();
+                                        } else if ev.code() == RelativeAxisType::REL_WHEEL.0 {
+                                            tx.send(MouseControlMsg::Scroll { dy: ev.value() as f32 }).unwrap();
+                                        }
+                                    },
+                                    EventType::KEY => {
+                                        let key_code = ev.code();
+                                        let down = ev.value() != 0;
+                                        if key_code == Key::BTN_LEFT.code() {
+                                            tx.send(MouseControlMsg::Click { button: "Left".to_string(), pressed: down }).unwrap();
+                                        } else if key_code == Key::BTN_RIGHT.code() {
+                                            tx.send(MouseControlMsg::Click { button: "Right".to_string(), pressed: down }).unwrap();
+                                        } else if key_code == Key::BTN_MIDDLE.code() {
+                                            tx.send(MouseControlMsg::Click { button: "Middle".to_string(), pressed: down }).unwrap();
+                                        } else {
+                                            if key_code == Key::KEY_ESC.code() && down {
+                                                kr.store(false, Ordering::SeqCst);
+                                                tx.send(MouseControlMsg::ReturnControl).unwrap();
+                                            } else {
+                                                tx.send(MouseControlMsg::Key { key_code: key_code as u32, down }).unwrap();
+                                            }
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+            });
+        } else {
+            if let Some((kr, _)) = capt.take() {
+                kr.store(false, Ordering::SeqCst);
+            }
+        }
+    }
+    
+    fn get_grabbed_events(&self) -> Vec<MouseControlMsg> {
+        let mut events = Vec::new();
+        if let Some((_, rx)) = &*self.capturing.lock().unwrap() {
+            while let Ok(msg) = rx.try_recv() {
+                events.push(msg);
+            }
+        }
+        events
     }
 }
 

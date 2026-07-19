@@ -8,6 +8,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
     MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
     MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_WHEEL,
+    INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, SetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, ClipCursor,
@@ -201,9 +202,19 @@ impl PlatformHandler for WindowsPlatform {
         }
     }
     
-    fn send_key(&self, _key_code: u32, _down: bool) {
-        // We do not currently need to send keys TO Windows from Linux, 
-        // since the user only requested Windows -> Linux control for now.
+    fn send_key(&self, key_code: u32, down: bool) {
+        let vk = map_evdev_to_vk(key_code);
+        if vk == 0 { return; }
+        
+        unsafe {
+            let mut input: INPUT = zeroed();
+            input.r#type = INPUT_KEYBOARD;
+            let mut ki: KEYBDINPUT = zeroed();
+            ki.wVk = vk;
+            ki.dwFlags = if down { 0 } else { KEYEVENTF_KEYUP };
+            input.Anonymous.ki = ki;
+            SendInput(1, &input as *const INPUT, size_of::<INPUT>() as i32);
+        }
     }
     
     fn set_capture_mode(&self, active: bool, cx: i32, cy: i32) {
@@ -231,6 +242,73 @@ impl PlatformHandler for WindowsPlatform {
             events.push(msg);
         }
         events
+    }
+}
+
+fn map_evdev_to_vk(evdev: u32) -> u16 {
+    match evdev {
+        1 => 0x1B, // ESC
+        2 => 0x31, // 1
+        3 => 0x32, // 2
+        4 => 0x33, // 3
+        5 => 0x34, // 4
+        6 => 0x35, // 5
+        7 => 0x36, // 6
+        8 => 0x37, // 7
+        9 => 0x38, // 8
+        10 => 0x39, // 9
+        11 => 0x30, // 0
+        12 => 0xBD, // MINUS
+        13 => 0xBB, // EQUAL
+        14 => 0x08, // BACKSPACE
+        15 => 0x09, // TAB
+        16 => 0x51, // Q
+        17 => 0x57, // W
+        18 => 0x45, // E
+        19 => 0x52, // R
+        20 => 0x54, // T
+        21 => 0x59, // Y
+        22 => 0x55, // U
+        23 => 0x49, // I
+        24 => 0x4F, // O
+        25 => 0x50, // P
+        26 => 0xDB, // [
+        27 => 0xDD, // ]
+        28 => 0x0D, // ENTER
+        29 => 0x11, // LCTRL
+        30 => 0x41, // A
+        31 => 0x53, // S
+        32 => 0x44, // D
+        33 => 0x46, // F
+        34 => 0x47, // G
+        35 => 0x48, // H
+        36 => 0x4A, // J
+        37 => 0x4B, // K
+        38 => 0x4C, // L
+        39 => 0xBA, // ;
+        40 => 0xDE, // '
+        41 => 0xC0, // `
+        42 => 0x10, // LSHIFT
+        43 => 0xDC, // \
+        44 => 0x5A, // Z
+        45 => 0x58, // X
+        46 => 0x43, // C
+        47 => 0x56, // V
+        48 => 0x42, // B
+        49 => 0x4E, // N
+        50 => 0x4D, // M
+        51 => 0xBC, // ,
+        52 => 0xBE, // .
+        53 => 0xBF, // /
+        54 => 0x10, // RSHIFT
+        56 => 0x12, // LALT
+        57 => 0x20, // SPACE
+        58 => 0x14, // CAPS
+        103 => 0x26, // UP
+        105 => 0x25, // LEFT
+        106 => 0x27, // RIGHT
+        108 => 0x28, // DOWN
+        _ => 0
     }
 }
 
