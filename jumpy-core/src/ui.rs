@@ -102,6 +102,8 @@ impl eframe::App for JumpyApp {
         // =========================================================
         // If we are actively controlling another computer, calculate mouse deltas and send them.
         if self.state.lock().unwrap().is_controlling_remote {
+            let (w, h) = self.platform.get_screen_size();
+            
             // Calculate delta from the center of the screen if polling is required
             let mut dx = 0;
             let mut dy = 0;
