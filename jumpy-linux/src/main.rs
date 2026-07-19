@@ -99,7 +99,14 @@ impl PlatformHandler for LinuxPlatform {
     }
 
     fn send_mouse_move(&self, dx: i32, dy: i32) {
-        self.send_cmd(&format!("mousemove_relative -- {} {}", dx, dy));
+        // xdotool's stdin parser has a known bug with negative numbers for mousemove_relative.
+        // We bypass it by spawning the command directly. It's fast enough on Linux.
+        let _ = Command::new("xdotool")
+            .arg("mousemove_relative")
+            .arg("--")
+            .arg(dx.to_string())
+            .arg(dy.to_string())
+            .spawn();
     }
 
     fn send_mouse_click(&self, button: &str, pressed: bool) {
@@ -127,9 +134,7 @@ fn main() -> Result<(), eframe::Error> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([720.0, 520.0])
             .with_min_inner_size([680.0, 480.0])
-            .with_resizable(true)
-            .with_transparent(true)
-            .with_decorations(false),
+            .with_resizable(true),
         ..Default::default()
     };
 

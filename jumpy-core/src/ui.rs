@@ -46,7 +46,6 @@ impl eframe::App for JumpyApp {
                     }
                 }
                 println!("Action: Transitioned to Remote Mode at edge {:?}", target_edge);
-                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked));
                 self.platform.set_mouse_pos(center_x, center_y);
@@ -117,7 +116,6 @@ impl eframe::App for JumpyApp {
                     println!("Action: Returning control to host!");
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = false;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
                     let return_x = match s.remote_edge {
                         Edge::Left => 10,
@@ -155,8 +153,8 @@ impl eframe::App for JumpyApp {
         let primary = self.primary_accent();
 
         if !self.state.lock().unwrap().is_controlling_remote {
-            // UI Top Bar (Custom Title Bar)
-            let title_bar_response = egui::TopBottomPanel::top("top_navigation_bar")
+            // UI Top Bar
+            egui::TopBottomPanel::top("top_navigation_bar")
                 .frame(egui::Frame::none().fill(egui::Color32::from_rgb(18, 20, 27)).inner_margin(12.0))
                 .show(ctx, |ui| {
                     ui.horizontal_centered(|ui| {
@@ -164,18 +162,8 @@ impl eframe::App for JumpyApp {
                             ui.add(egui::Image::new(logo).fit_to_exact_size(egui::vec2(32.0, 32.0)));
                         }
                         ui.label(egui::RichText::new("JUMPY").font(egui::FontId::proportional(18.0)).color(primary).strong());
-                        
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("❌").clicked() {
-                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                            }
-                        });
                     });
-                }).response;
-                
-            if title_bar_response.interact(egui::Sense::click_and_drag()).drag_started() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            }
+                });
 
             // UI Main Panel
             egui::CentralPanel::default()
@@ -264,12 +252,19 @@ impl eframe::App for JumpyApp {
                     }
                 });
         } else {
-            // Render invisible capture panel
+            // Render capture panel
             ctx.set_cursor_icon(egui::CursorIcon::None);
             
             egui::CentralPanel::default()
-                .frame(egui::Frame::none().fill(egui::Color32::from_black_alpha(1)))
+                .frame(egui::Frame::none().fill(egui::Color32::from_rgb(10, 11, 16)))
                 .show(ctx, |ui| {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(egui::RichText::new("Remote Control Active\n\nPress ESC or move mouse to edge to return")
+                            .color(primary)
+                            .size(24.0)
+                            .strong());
+                    });
+                    
                     let response = ui.allocate_response(ui.available_size(), egui::Sense::click_and_drag());
                     
                     if response.clicked() {
