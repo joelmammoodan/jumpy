@@ -200,6 +200,9 @@ impl JumpyApp {
                                 let mut s = state.lock().unwrap();
                                 s.is_controlling_remote = false;
                             }
+                            MouseControlMsg::Key { key_code, down } => {
+                                platform.send_key(key_code, down);
+                            }
                             MouseControlMsg::ConnectNotification { host_name } => {
                                 println!("Action: Received Connect Notification from {}", host_name);
                                 // Show a native OS desktop notification so the user knows they are being controlled

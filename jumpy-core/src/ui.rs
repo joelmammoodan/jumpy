@@ -37,18 +37,10 @@ impl eframe::App for JumpyApp {
 
             if hit {
                 // We hit the edge! Transition into Remote Control Mode.
-                // We hit the edge! Transition into Remote Control Mode.
                 
-                let mut warp_x = w / 2;
-                let mut warp_y = h / 2;
-                
-                let ppp = ctx.pixels_per_point();
-                ctx.input(|i| {
-                    if let Some(outer_rect) = i.viewport().outer_rect {
-                        warp_x = (outer_rect.center().x * ppp) as i32;
-                        warp_y = (outer_rect.center().y * ppp) as i32;
-                    }
-                });
+                // We lock the cursor exactly where it hit the edge of the screen!
+                let warp_x = x;
+                let warp_y = y;
                 
                 {
                     let mut s = self.state.lock().unwrap();
@@ -133,6 +125,18 @@ impl eframe::App for JumpyApp {
                         Edge::Top => if s.virtual_y > 1080.0 + 50.0 { should_return = true; }
                         Edge::Bottom => if s.virtual_y < -50.0 { should_return = true; }
                         _ => {}
+                    }
+                }
+
+                // Forward any swallowed global events from the OS hook to the remote machine
+                for ev in self.platform.get_grabbed_events() {
+                    match ev {
+                        MouseControlMsg::ReturnControl => {
+                            should_return = true;
+                        },
+                        _ => {
+                            self.send_mouse_msg(ev);
+                        }
                     }
                 }
 
@@ -363,27 +367,8 @@ impl eframe::App for JumpyApp {
                             .strong());
                     });
                     
-                    // Allocate an invisible response area covering the entire window to catch clicks
-                    let response = ui.allocate_response(ui.available_size(), egui::Sense::click_and_drag());
-                    
-                    if response.clicked() {
-                        self.send_mouse_msg(MouseControlMsg::Click { button: "Left".to_string(), pressed: true });
-                        self.send_mouse_msg(MouseControlMsg::Click { button: "Left".to_string(), pressed: false });
-                    }
-                    if response.secondary_clicked() {
-                        self.send_mouse_msg(MouseControlMsg::Click { button: "Right".to_string(), pressed: true });
-                        self.send_mouse_msg(MouseControlMsg::Click { button: "Right".to_string(), pressed: false });
-                    }
-                    if response.middle_clicked() {
-                        self.send_mouse_msg(MouseControlMsg::Click { button: "Middle".to_string(), pressed: true });
-                        self.send_mouse_msg(MouseControlMsg::Click { button: "Middle".to_string(), pressed: false });
-                    }
-                    
-                    // Handle scroll
-                    let scroll = ctx.input(|i| i.smooth_scroll_delta.y);
-                    if scroll != 0.0 {
-                        self.send_mouse_msg(MouseControlMsg::Scroll { dy: scroll });
-                    }
+                    // Clicks and scrolls are now handled entirely by the global OS hook
+                    // so we do not need to capture them via egui response.
                 });
         }
         

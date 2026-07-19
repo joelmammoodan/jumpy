@@ -16,6 +16,11 @@ impl LinuxPlatform {
         keys.insert(Key::BTN_LEFT);
         keys.insert(Key::BTN_RIGHT);
         keys.insert(Key::BTN_MIDDLE);
+        
+        // Register standard keyboard keys (1 to 255)
+        for i in 1..255 {
+            keys.insert(Key::new(i));
+        }
 
         let mut rel_axes = AttributeSet::new();
         rel_axes.insert(RelativeAxisType::REL_X);
@@ -95,6 +100,18 @@ impl PlatformHandler for LinuxPlatform {
             if let Ok(mut dev) = dev_mutex.lock() {
                 let _ = dev.emit(&[
                     InputEvent::new(EventType::RELATIVE, RelativeAxisType::REL_WHEEL.0, dy),
+                    InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
+                ]);
+            }
+        }
+    }
+
+    fn send_key(&self, key_code: u32, down: bool) {
+        let value = if down { 1 } else { 0 };
+        if let Some(dev_mutex) = &self.device {
+            if let Ok(mut dev) = dev_mutex.lock() {
+                let _ = dev.emit(&[
+                    InputEvent::new(EventType::KEY, key_code as u16, value),
                     InputEvent::new(EventType::SYNCHRONIZATION, 0, 0),
                 ]);
             }

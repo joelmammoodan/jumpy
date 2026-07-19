@@ -28,8 +28,14 @@ pub trait PlatformHandler: Send + Sync {
     /// Send a mouse scroll event
     fn send_mouse_scroll(&self, dy: i32);
     
+    /// Send a key event
+    fn send_key(&self, key_code: u32, down: bool);
+    
     /// Enable or disable global input capture. When true, the OS cursor is frozen and movements are intercepted.
     fn set_capture_mode(&self, _active: bool, _x: i32, _y: i32) {}
+    
+    /// Get captured raw events (clicks, keys) from the global hook.
+    fn get_grabbed_events(&self) -> Vec<crate::network::MouseControlMsg> { Vec::new() }
     
     /// Get the raw hardware delta accumulated by the global hook. Returns (dx, dy) and resets the accumulator.
     fn get_raw_delta(&self) -> (f64, f64) { (0.0, 0.0) }

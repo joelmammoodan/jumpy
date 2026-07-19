@@ -34,6 +34,7 @@ pub enum MouseControlMsg {
     Move { dx: f32, dy: f32 },
     Click { button: String, pressed: bool },
     Scroll { dy: f32 },
+    Key { key_code: u32, down: bool },
     /// Tells the client to drop control back to the host.
     ReturnControl,
     
