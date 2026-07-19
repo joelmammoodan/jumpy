@@ -9,8 +9,8 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
     MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_WHEEL,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, SetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
-use windows_sys::Win32::Foundation::POINT;
+use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, SetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, ClipCursor};
+use windows_sys::Win32::Foundation::{POINT, RECT};
 use std::mem::{size_of, zeroed};
 
 struct WindowsPlatform;
@@ -80,6 +80,24 @@ impl PlatformHandler for WindowsPlatform {
             mi.dwFlags = MOUSEEVENTF_WHEEL;
             input.Anonymous.mi = mi;
             SendInput(1, &input as *const INPUT, size_of::<INPUT>() as i32);
+        }
+    }
+    
+    fn set_capture_mode(&self, active: bool, cx: i32, cy: i32) {
+        unsafe {
+            if active {
+                SetCursorPos(cx, cy);
+                
+                let rect = RECT {
+                    left: cx - 10,
+                    top: cy - 10,
+                    right: cx + 10,
+                    bottom: cy + 10,
+                };
+                ClipCursor(&rect);
+            } else {
+                ClipCursor(std::ptr::null());
+            }
         }
     }
 }

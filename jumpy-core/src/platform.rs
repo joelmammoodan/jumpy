@@ -29,7 +29,7 @@ pub trait PlatformHandler: Send + Sync {
     fn send_mouse_scroll(&self, dy: i32);
     
     /// Enable or disable global input capture. When true, the OS cursor is frozen and movements are intercepted.
-    fn set_capture_mode(&self, _active: bool) {}
+    fn set_capture_mode(&self, _active: bool, _x: i32, _y: i32) {}
     
     /// Get the raw hardware delta accumulated by the global hook. Returns (dx, dy) and resets the accumulator.
     fn get_raw_delta(&self) -> (f64, f64) { (0.0, 0.0) }

@@ -38,15 +38,13 @@ impl eframe::App for JumpyApp {
             if hit {
                 // We hit the edge! Transition into Remote Control Mode.
                 // We hit the edge! Transition into Remote Control Mode.
-                // To successfully lock the cursor, it must be physically inside the Jumpy window.
+                
                 let mut warp_x = w / 2;
                 let mut warp_y = h / 2;
                 
                 let ppp = ctx.pixels_per_point();
                 ctx.input(|i| {
                     if let Some(outer_rect) = i.viewport().outer_rect {
-                        // outer_rect is in logical points! We MUST multiply by DPI scaling
-                        // so SetCursorPos (which takes physical pixels) hits the window exactly!
                         warp_x = (outer_rect.center().x * ppp) as i32;
                         warp_y = (outer_rect.center().y * ppp) as i32;
                     }
@@ -66,12 +64,13 @@ impl eframe::App for JumpyApp {
                 }
                 println!("Action: Transitioned to Remote Mode at edge {:?}", target_edge);
                 
-                // Grab UI focus and lock the cursor so it vanishes
-                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked));
+                // Hide the egui cursor
+                ctx.set_cursor_icon(egui::CursorIcon::None);
                 
-                // Warp the physical mouse directly into the Jumpy window so Windows allows the grab
-                self.platform.set_mouse_pos(warp_x, warp_y);
+                // Enable OS-level capture (ClipCursor) at the exact window location
+                self.platform.set_capture_mode(true, warp_x, warp_y);
+                
+                // Set last_x and last_y to the anchor point
                 self.last_x = warp_x;
                 self.last_y = warp_y;
             }
@@ -84,24 +83,26 @@ impl eframe::App for JumpyApp {
         if self.state.lock().unwrap().is_controlling_remote {
             let (x, y) = self.platform.get_mouse_pos();
             let (w, h) = self.platform.get_screen_size();
+            let cx = self.last_x;
+            let cy = self.last_y;
             
-            let mut dx = x - self.last_x;
-            let mut dy = y - self.last_y;
+            // Calculate delta from the center of the screen
+            let mut dx = x - cx;
+            let mut dy = y - cy;
             
-            // If the cursor is locked, the hardware position might not change. Fallback to egui's raw pointer delta.
-            ctx.input(|i| {
-                if dx == 0 && dy == 0 {
-                    dx = i.pointer.delta().x as i32;
-                    dy = i.pointer.delta().y as i32;
-                }
-            });
+            // Instantly snap the cursor back to the center of the screen so it has room to move next frame
+            if dx != 0 || dy != 0 {
+                self.platform.set_mouse_pos(cx, cy);
+            }
             
-            // Ignore massive jumps, they are artifacts of set_mouse_pos warping or fullscreen transitions
+            // Ignore massive jumps (e.g. from the initial warp to the center)
             if dx.abs() > 500 || dy.abs() > 500 {
-                println!("Action: Ignored massive jump (dx: {}, dy: {}) - likely warp artifact", dx, dy);
-                self.last_x = x;
-                self.last_y = y;
-            } else if dx != 0 || dy != 0 {
+                println!("Action: Ignored massive jump (dx: {}, dy: {})", dx, dy);
+                dx = 0;
+                dy = 0;
+            }
+            
+            if dx != 0 || dy != 0 {
                 let scaled_dx = (dx as f32) * self.sensitivity;
                 let scaled_dy = (dy as f32) * self.sensitivity;
                 self.accum_x += scaled_dx;
@@ -112,15 +113,12 @@ impl eframe::App for JumpyApp {
                 self.accum_y -= send_dy;
 
                 if send_dx != 0.0 || send_dy != 0.0 {
-                    println!("Action: Sending Mouse Move (dx: {:.2}, dy: {:.2})", send_dx, send_dy);
+                    // println!("Action: Sending Mouse Move (dx: {:.2}, dy: {:.2})", send_dx, send_dy);
                     self.send_mouse_msg(MouseControlMsg::Move { 
                         dx: send_dx, 
                         dy: send_dy 
                     });
                 }
-                
-                self.last_x = x;
-                self.last_y = y;
 
                 let mut should_return = false;
                 {
@@ -148,7 +146,8 @@ impl eframe::App for JumpyApp {
                     s.is_controlling_remote = false;
                     
                     // Release the OS mouse lock
-                    ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
+                    self.platform.set_capture_mode(false, 0, 0);
+                    ctx.set_cursor_icon(egui::CursorIcon::Default);
                     
                     // Pop the mouse cursor out just inside the edge of the physical screen
                     let return_x = match s.remote_edge {
@@ -171,7 +170,8 @@ impl eframe::App for JumpyApp {
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                 let mut s = self.state.lock().unwrap();
                 s.is_controlling_remote = false;
-                ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
+                self.platform.set_capture_mode(false, 0, 0);
+                ctx.set_cursor_icon(egui::CursorIcon::Default);
             }
         }
 
