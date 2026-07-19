@@ -53,9 +53,8 @@ impl eframe::App for JumpyApp {
                 }
                 println!("Action: Transitioned to Remote Mode at edge {:?}", target_edge);
                 
-                // Grab UI focus, make the window fullscreen, and lock the cursor so it vanishes
+                // Grab UI focus and lock the cursor so it vanishes
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                 ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked));
                 
                 // Set the physical mouse to the center so it doesn't immediately un-trigger edges if we resize
@@ -135,9 +134,8 @@ impl eframe::App for JumpyApp {
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = false;
                     
-                    // Release the OS mouse lock and exit fullscreen
+                    // Release the OS mouse lock
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
                     
                     // Pop the mouse cursor out just inside the edge of the physical screen
                     let return_x = match s.remote_edge {
@@ -161,7 +159,6 @@ impl eframe::App for JumpyApp {
                 let mut s = self.state.lock().unwrap();
                 s.is_controlling_remote = false;
                 ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
             }
         }
 
