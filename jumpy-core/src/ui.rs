@@ -53,11 +53,12 @@ impl eframe::App for JumpyApp {
                 }
                 println!("Action: Transitioned to Remote Mode at edge {:?}", target_edge);
                 
-                // Grab UI focus and lock the cursor so the OS doesn't move the real mouse anymore
+                // Grab UI focus, make the window fullscreen, and lock the cursor so it vanishes
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                 ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked));
                 
-                // Warp the physical mouse to the center of the screen so it has room to move
+                // Set the physical mouse to the center so it doesn't immediately un-trigger edges if we resize
                 self.platform.set_mouse_pos(center_x, center_y);
                 self.last_x = center_x;
                 self.last_y = center_y;
@@ -83,8 +84,8 @@ impl eframe::App for JumpyApp {
                 }
             });
             
-            // Ignore massive jumps, they are artifacts of set_mouse_pos warping
-            if dx.abs() > 250 || dy.abs() > 250 {
+            // Ignore massive jumps, they are artifacts of set_mouse_pos warping or fullscreen transitions
+            if dx.abs() > 500 || dy.abs() > 500 {
                 println!("Action: Ignored massive jump (dx: {}, dy: {}) - likely warp artifact", dx, dy);
                 self.last_x = x;
                 self.last_y = y;
@@ -134,8 +135,9 @@ impl eframe::App for JumpyApp {
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = false;
                     
-                    // Release the OS mouse lock
+                    // Release the OS mouse lock and exit fullscreen
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
                     
                     // Pop the mouse cursor out just inside the edge of the physical screen
                     let return_x = match s.remote_edge {
@@ -154,22 +156,12 @@ impl eframe::App for JumpyApp {
                 }
             }
 
-            // Continuous Cursor Warping (Safety net)
-            // If the hardware cursor drifts too close to the real screen edge, warp it back to center
-            if self.state.lock().unwrap().is_controlling_remote {
-                if x < 200 || x > w - 200 || y < 200 || y > h - 200 {
-                    let center_x = w / 2;
-                    let center_y = h / 2;
-                    self.platform.set_mouse_pos(center_x, center_y);
-                    self.last_x = center_x;
-                    self.last_y = center_y;
-                }
-            }
-
             // Emergency Return (ESC Key)
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                 let mut s = self.state.lock().unwrap();
                 s.is_controlling_remote = false;
+                ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
             }
         }
 
