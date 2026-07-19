@@ -144,19 +144,24 @@ impl JumpyApp {
                     if let Ok(msg) = serde_json::from_slice::<MouseControlMsg>(&buf[..amt]) {
                         match msg {
                             MouseControlMsg::Move { dx, dy } => {
+                                println!("Action: Received Mouse Move (dx: {:.2}, dy: {:.2})", dx, dy);
                                 platform.send_mouse_move(dx as i32, dy as i32);
                             }
                             MouseControlMsg::Click { button, pressed } => {
+                                println!("Action: Received Mouse Click (button: {}, pressed: {})", button, pressed);
                                 platform.send_mouse_click(&button, pressed);
                             }
                             MouseControlMsg::Scroll { dy } => {
+                                println!("Action: Received Mouse Scroll (dy: {:.2})", dy);
                                 platform.send_mouse_scroll(dy as i32);
                             }
                             MouseControlMsg::ReturnControl => {
+                                println!("Action: Received Return Control");
                                 let mut s = state.lock().unwrap();
                                 s.is_controlling_remote = false;
                             }
                             MouseControlMsg::ConnectNotification { host_name } => {
+                                println!("Action: Received Connect Notification from {}", host_name);
                                 let _ = notify_rust::Notification::new()
                                     .summary("Jumpy Connected")
                                     .body(&format!("{} is now controlling this machine.", host_name))

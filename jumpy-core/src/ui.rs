@@ -45,7 +45,7 @@ impl eframe::App for JumpyApp {
                         _ => {}
                     }
                 }
-                println!("Transitioned to Remote Mode at edge {:?}", target_edge);
+                println!("Action: Transitioned to Remote Mode at edge {:?}", target_edge);
                 self.platform.set_mouse_pos(center_x, center_y);
                 self.last_x = center_x;
                 self.last_y = center_y;
@@ -60,10 +60,16 @@ impl eframe::App for JumpyApp {
             let dx = x - self.last_x;
             let dy = y - self.last_y;
             
-            if dx != 0 || dy != 0 {
+            // Ignore massive jumps, they are artifacts of set_mouse_pos warping
+            if dx.abs() > 250 || dy.abs() > 250 {
+                println!("Action: Ignored massive jump (dx: {}, dy: {}) - likely warp artifact", dx, dy);
+                self.last_x = x;
+                self.last_y = y;
+            } else if dx != 0 || dy != 0 {
                 let scaled_dx = (dx as f32) * self.sensitivity;
                 let scaled_dy = (dy as f32) * self.sensitivity;
 
+                println!("Action: Sending Mouse Move (dx: {:.2}, dy: {:.2})", scaled_dx, scaled_dy);
                 self.send_mouse_msg(MouseControlMsg::Move { 
                     dx: scaled_dx, 
                     dy: scaled_dy 
@@ -88,7 +94,7 @@ impl eframe::App for JumpyApp {
                 }
 
                 if should_return {
-                    println!("Returning control to host!");
+                    println!("Action: Returning control to host!");
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = false;
                     let return_x = match s.remote_edge {
