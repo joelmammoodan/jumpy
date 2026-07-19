@@ -187,6 +187,7 @@ impl JumpyApp {
                         Ok(msg) => match msg {
                             // Security Enforcement: Only process movement from trusted hosts
                             MouseControlMsg::Move { dx, dy } => {
+                                println!("Action: Executing Move (dx: {}, dy: {})", dx, dy);
                                 platform.send_mouse_move(dx as i32, dy as i32);
                             }
                             MouseControlMsg::Click { button, pressed } => {
