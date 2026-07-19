@@ -162,13 +162,34 @@ impl eframe::App for JumpyApp {
 
                 // Forward any swallowed global events from the OS hook to the remote machine
                 for ev in self.platform.get_grabbed_events() {
-                    match ev {
+                    match &ev {
                         MouseControlMsg::ReturnControl => {
                             should_return = true;
+                        },
+                        MouseControlMsg::Move { dx, dy } => {
+                            let mut s = self.state.lock().unwrap();
+                            let scaled_dx = *dx * self.sensitivity;
+                            let scaled_dy = *dy * self.sensitivity;
+                            s.virtual_x = (s.virtual_x + scaled_dx).clamp(-100.0, 3840.0 + 100.0);
+                            s.virtual_y = (s.virtual_y + scaled_dy).clamp(-100.0, 2160.0 + 100.0);
+                            self.send_mouse_msg(ev);
                         },
                         _ => {
                             self.send_mouse_msg(ev);
                         }
+                    }
+                }
+                
+                // Also check if the new virtual_x/virtual_y triggered a return
+                {
+                    let s = self.state.lock().unwrap();
+                    let target = s.remote_edge;
+                    match target {
+                        Edge::Left => if s.virtual_x > 1920.0 + 50.0 { should_return = true; }
+                        Edge::Right => if s.virtual_x < -50.0 { should_return = true; }
+                        Edge::Top => if s.virtual_y > 1080.0 + 50.0 { should_return = true; }
+                        Edge::Bottom => if s.virtual_y < -50.0 { should_return = true; }
+                        _ => {}
                     }
                 }
                 

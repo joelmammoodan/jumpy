@@ -2293,6 +2293,7 @@ dependencies = [
  "eframe",
  "evdev",
  "jumpy-core",
+ "libc",
 ]
 
 [[package]]
