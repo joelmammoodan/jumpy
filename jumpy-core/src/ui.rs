@@ -167,6 +167,12 @@ impl eframe::App for JumpyApp {
                         }
                     }
                 }
+                
+                // CRITICAL: Because our low-level OS hook swallows keyboard keys and mouse clicks,
+                // the egui/winit event loop will not receive them and will go to sleep to save battery.
+                // This causes a massive lag because the events sit in the channel until the user moves the mouse.
+                // We MUST request continuous repaints while capturing to poll the channel instantly.
+                ctx.request_repaint();
 
                 if should_return {
             // =========================================================
