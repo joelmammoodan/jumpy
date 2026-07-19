@@ -46,6 +46,9 @@ impl eframe::App for JumpyApp {
                     }
                 }
                 println!("Action: Transitioned to Remote Mode at edge {:?}", target_edge);
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked));
                 self.platform.set_mouse_pos(center_x, center_y);
                 self.last_x = center_x;
                 self.last_y = center_y;
@@ -57,8 +60,16 @@ impl eframe::App for JumpyApp {
             let (x, y) = self.platform.get_mouse_pos();
             let (w, h) = self.platform.get_screen_size();
             
-            let dx = x - self.last_x;
-            let dy = y - self.last_y;
+            let mut dx = x - self.last_x;
+            let mut dy = y - self.last_y;
+            
+            // If the cursor is locked, the hardware position might not change. Fallback to egui's raw pointer delta.
+            ctx.input(|i| {
+                if dx == 0 && dy == 0 {
+                    dx = i.pointer.delta().x as i32;
+                    dy = i.pointer.delta().y as i32;
+                }
+            });
             
             // Ignore massive jumps, they are artifacts of set_mouse_pos warping
             if dx.abs() > 250 || dy.abs() > 250 {
@@ -106,6 +117,8 @@ impl eframe::App for JumpyApp {
                     println!("Action: Returning control to host!");
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = false;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::None));
                     let return_x = match s.remote_edge {
                         Edge::Left => 10,
                         Edge::Right => w - 10,
@@ -141,103 +154,143 @@ impl eframe::App for JumpyApp {
 
         let primary = self.primary_accent();
 
-        // UI Top Bar
-        egui::TopBottomPanel::top("top_navigation_bar")
-            .frame(egui::Frame::none().fill(egui::Color32::from_rgb(18, 20, 27)).inner_margin(12.0))
-            .show(ctx, |ui| {
-                ui.horizontal_centered(|ui| {
-                    if let Some(logo) = &self.logo {
-                        ui.add(egui::Image::new(logo).fit_to_exact_size(egui::vec2(32.0, 32.0)));
-                    }
-                    ui.label(egui::RichText::new("JUMPY").font(egui::FontId::proportional(18.0)).color(primary).strong());
-                });
-            });
-
-        // UI Main Panel
-        egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(egui::Color32::from_rgb(10, 11, 16)).inner_margin(24.0))
-            .show(ctx, |ui| {
-                // Local Info Section
-                ui.label(egui::RichText::new("Local Machine").strong().size(18.0).color(egui::Color32::WHITE));
-                ui.add_space(8.0);
-                
-                let (local_ip, local_name) = {
-                    let s = self.state.lock().unwrap();
-                    (s.local_ip.clone(), s.local_name.clone())
-                };
-                
-                ui.label(format!("Name: {}", local_name));
-                ui.label(format!("IP Address: {}", local_ip));
-                ui.add_space(16.0);
-                
-                // Seamless Setup Section
-                ui.label(egui::RichText::new("Seamless Edge Configuration").strong().size(16.0).color(egui::Color32::WHITE));
-                ui.add_space(4.0);
-                ui.label(egui::RichText::new("Move your mouse to this edge to control the connected remote.").color(egui::Color32::GRAY));
-                ui.add_space(4.0);
-                
-                let mut current_edge = { self.state.lock().unwrap().remote_edge };
-                egui::ComboBox::from_label("Target Edge")
-                    .selected_text(format!("{:?}", current_edge))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut current_edge, Edge::None, "None (Disabled)");
-                        ui.selectable_value(&mut current_edge, Edge::Left, "Left");
-                        ui.selectable_value(&mut current_edge, Edge::Right, "Right");
-                        ui.selectable_value(&mut current_edge, Edge::Top, "Top");
-                        ui.selectable_value(&mut current_edge, Edge::Bottom, "Bottom");
+        if !self.state.lock().unwrap().is_controlling_remote {
+            // UI Top Bar (Custom Title Bar)
+            let title_bar_response = egui::TopBottomPanel::top("top_navigation_bar")
+                .frame(egui::Frame::none().fill(egui::Color32::from_rgb(18, 20, 27)).inner_margin(12.0))
+                .show(ctx, |ui| {
+                    ui.horizontal_centered(|ui| {
+                        if let Some(logo) = &self.logo {
+                            ui.add(egui::Image::new(logo).fit_to_exact_size(egui::vec2(32.0, 32.0)));
+                        }
+                        ui.label(egui::RichText::new("JUMPY").font(egui::FontId::proportional(18.0)).color(primary).strong());
+                        
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("❌").clicked() {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                        });
                     });
+                }).response;
                 
-                if { self.state.lock().unwrap().remote_edge } != current_edge {
-                    self.state.lock().unwrap().remote_edge = current_edge;
-                }
-                
-                ui.add_space(24.0);
-                ui.separator();
-                ui.add_space(16.0);
-                
-                // Network Devices Section
-                ui.label(egui::RichText::new("Discovered Clients").strong().size(18.0).color(egui::Color32::WHITE));
-                ui.add_space(8.0);
-                
-                let peers = {
-                    let s = self.state.lock().unwrap();
-                    s.peers.values().cloned().collect::<Vec<_>>()
-                };
-                
-                if peers.is_empty() {
-                    ui.label(egui::RichText::new("Scanning network...").italics().color(egui::Color32::GRAY));
-                } else {
-                    for peer in peers {
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.label(egui::RichText::new(&peer.name).strong().color(egui::Color32::WHITE));
-                                    ui.label(egui::RichText::new(format!("IP: {}", peer.ip)).size(12.0).color(egui::Color32::GRAY));
-                                });
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    let is_selected = self.selected_peer_id.as_ref() == Some(&peer.id);
-                                    if is_selected {
-                                        if ui.button("Disconnect").clicked() {
-                                            self.selected_peer_id = None;
-                                        }
-                                    } else {
-                                        if ui.button("Connect").clicked() {
-                                            self.selected_peer_id = Some(peer.id.clone());
-                                            
-                                            // Send Notification
-                                            let host_name = local_name.clone();
-                                            if let Ok(serialized) = serde_json::to_string(&MouseControlMsg::ConnectNotification { host_name }) {
-                                                let target = format!("{}:{}", peer.ip, peer.mouse_port);
-                                                let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+            if title_bar_response.interact(egui::Sense::click_and_drag()).drag_started() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
+
+            // UI Main Panel
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none().fill(egui::Color32::from_rgb(10, 11, 16)).inner_margin(24.0))
+                .show(ctx, |ui| {
+                    // Local Info Section
+                    ui.label(egui::RichText::new("Local Machine").strong().size(18.0).color(egui::Color32::WHITE));
+                    ui.add_space(8.0);
+                    
+                    let (local_ip, local_name) = {
+                        let s = self.state.lock().unwrap();
+                        (s.local_ip.clone(), s.local_name.clone())
+                    };
+                    
+                    ui.label(format!("Name: {}", local_name));
+                    ui.label(format!("IP Address: {}", local_ip));
+                    ui.add_space(16.0);
+                    
+                    // Seamless Setup Section
+                    ui.label(egui::RichText::new("Seamless Edge Configuration").strong().size(16.0).color(egui::Color32::WHITE));
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("Move your mouse to this edge to control the connected remote.").color(egui::Color32::GRAY));
+                    ui.add_space(4.0);
+                    
+                    let mut current_edge = { self.state.lock().unwrap().remote_edge };
+                    egui::ComboBox::from_label("Target Edge")
+                        .selected_text(format!("{:?}", current_edge))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut current_edge, Edge::None, "None (Disabled)");
+                            ui.selectable_value(&mut current_edge, Edge::Left, "Left");
+                            ui.selectable_value(&mut current_edge, Edge::Right, "Right");
+                            ui.selectable_value(&mut current_edge, Edge::Top, "Top");
+                            ui.selectable_value(&mut current_edge, Edge::Bottom, "Bottom");
+                        });
+                    
+                    if { self.state.lock().unwrap().remote_edge } != current_edge {
+                        self.state.lock().unwrap().remote_edge = current_edge;
+                    }
+                    
+                    ui.add_space(24.0);
+                    ui.separator();
+                    ui.add_space(16.0);
+                    
+                    // Network Devices Section
+                    ui.label(egui::RichText::new("Discovered Clients").strong().size(18.0).color(egui::Color32::WHITE));
+                    ui.add_space(8.0);
+                    
+                    let peers = {
+                        let s = self.state.lock().unwrap();
+                        s.peers.values().cloned().collect::<Vec<_>>()
+                    };
+                    
+                    if peers.is_empty() {
+                        ui.label(egui::RichText::new("Scanning network...").italics().color(egui::Color32::GRAY));
+                    } else {
+                        for peer in peers {
+                            ui.group(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.vertical(|ui| {
+                                        ui.label(egui::RichText::new(&peer.name).strong().color(egui::Color32::WHITE));
+                                        ui.label(egui::RichText::new(format!("IP: {}", peer.ip)).size(12.0).color(egui::Color32::GRAY));
+                                    });
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        let is_selected = self.selected_peer_id.as_ref() == Some(&peer.id);
+                                        if is_selected {
+                                            if ui.button("Disconnect").clicked() {
+                                                self.selected_peer_id = None;
+                                            }
+                                        } else {
+                                            if ui.button("Connect").clicked() {
+                                                self.selected_peer_id = Some(peer.id.clone());
+                                                
+                                                // Send Notification
+                                                let host_name = local_name.clone();
+                                                if let Ok(serialized) = serde_json::to_string(&MouseControlMsg::ConnectNotification { host_name }) {
+                                                    let target = format!("{}:{}", peer.ip, peer.mouse_port);
+                                                    let _ = self.client_socket.send_to(serialized.as_bytes(), target);
+                                                }
                                             }
                                         }
-                                    }
+                                    });
                                 });
                             });
-                        });
-                        ui.add_space(4.0);
+                            ui.add_space(4.0);
+                        }
                     }
-                }
-            });
+                });
+        } else {
+            // Render invisible capture panel
+            ctx.set_cursor_icon(egui::CursorIcon::None);
+            
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none().fill(egui::Color32::from_black_alpha(1)))
+                .show(ctx, |ui| {
+                    let response = ui.allocate_response(ui.available_size(), egui::Sense::click_and_drag());
+                    
+                    if response.clicked() {
+                        self.send_mouse_msg(MouseControlMsg::Click { button: "Left".to_string(), pressed: true });
+                        self.send_mouse_msg(MouseControlMsg::Click { button: "Left".to_string(), pressed: false });
+                    }
+                    if response.secondary_clicked() {
+                        self.send_mouse_msg(MouseControlMsg::Click { button: "Right".to_string(), pressed: true });
+                        self.send_mouse_msg(MouseControlMsg::Click { button: "Right".to_string(), pressed: false });
+                    }
+                    if response.middle_clicked() {
+                        self.send_mouse_msg(MouseControlMsg::Click { button: "Middle".to_string(), pressed: true });
+                        self.send_mouse_msg(MouseControlMsg::Click { button: "Middle".to_string(), pressed: false });
+                    }
+                    
+                    // Handle scroll
+                    let scroll = ctx.input(|i| i.smooth_scroll_delta.y);
+                    if scroll != 0.0 {
+                        self.send_mouse_msg(MouseControlMsg::Scroll { dy: scroll });
+                    }
+                });
+        }
     }
 }
