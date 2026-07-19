@@ -3,6 +3,7 @@ use jumpy_core::platform::PlatformHandler;
 use jumpy_core::JumpyApp;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::os::unix::io::AsRawFd;
 use evdev::uinput::{VirtualDeviceBuilder, VirtualDevice};
 use evdev::{AttributeSet, EventType, InputEvent, RelativeAxisType, Key};
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -199,6 +200,11 @@ impl PlatformHandler for LinuxPlatform {
                         if let Ok(mut dev) = evdev::Device::open(entry.path()) {
                             if dev.supported_keys().map_or(false, |k| k.contains(evdev::Key::BTN_LEFT) || k.contains(evdev::Key::KEY_A)) {
                                 if dev.grab().is_ok() {
+                                    let fd = dev.as_raw_fd();
+                                    unsafe {
+                                        let flags = libc::fcntl(fd, libc::F_GETFL);
+                                        libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                                    }
                                     grabbed_devices.push(dev);
                                 }
                             }

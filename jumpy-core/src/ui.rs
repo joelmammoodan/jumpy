@@ -144,8 +144,11 @@ impl eframe::App for JumpyApp {
                 let mut should_return = false;
                 {
                     let mut s = self.state.lock().unwrap();
-                    s.virtual_x += scaled_dx;
-                    s.virtual_y += scaled_dy;
+                    // Clamp the virtual cursor so it doesn't run away to infinity if the user
+                    // keeps moving the mouse in one direction. We give it a generous +/- 100px buffer 
+                    // outside the standard screen bounds to allow for edge detection to trigger.
+                    s.virtual_x = (s.virtual_x + scaled_dx).clamp(-100.0, 3840.0 + 100.0);
+                    s.virtual_y = (s.virtual_y + scaled_dy).clamp(-100.0, 2160.0 + 100.0);
                     
                     let target = s.remote_edge;
                     match target {
