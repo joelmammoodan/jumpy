@@ -266,6 +266,14 @@ impl eframe::App for JumpyApp {
                         self.state.lock().unwrap().remote_edge = current_edge;
                     }
                     
+                    ui.add_space(16.0);
+                    // DEBUG OVERLAY
+                    let (mx, my) = self.platform.get_mouse_pos();
+                    let (sw, sh) = self.platform.get_screen_size();
+                    ui.label(egui::RichText::new("Debug Diagnostics:").color(egui::Color32::YELLOW));
+                    ui.label(format!("Detected Mouse Pos: x={}, y={}", mx, my));
+                    ui.label(format!("Detected Screen Size: w={}, h={}", sw, sh));
+                    
                     ui.add_space(24.0);
                     ui.separator();
                     ui.add_space(16.0);
