@@ -27,11 +27,12 @@ impl eframe::App for JumpyApp {
             let (w, h) = self.platform.get_screen_size();
             
             let mut hit = false;
+            let edge_threshold = 5;
             match target_edge {
-                Edge::Left => if x <= 0 { hit = true; },
-                Edge::Right => if x >= w - 1 { hit = true; },
-                Edge::Top => if y <= 0 { hit = true; },
-                Edge::Bottom => if y >= h - 1 { hit = true; },
+                Edge::Left => if x <= edge_threshold { hit = true; },
+                Edge::Right => if x >= w - 1 - edge_threshold { hit = true; },
+                Edge::Top => if y <= edge_threshold { hit = true; },
+                Edge::Bottom => if y >= h - 1 - edge_threshold { hit = true; },
                 _ => {}
             }
 
@@ -187,15 +188,15 @@ impl eframe::App for JumpyApp {
                     self.platform.set_capture_mode(false, 0, 0);
                     ctx.set_cursor_icon(egui::CursorIcon::Default);
                     
-                    // Pop the mouse cursor out just inside the edge of the physical screen
+                    // Pop the mouse cursor out safely away from the edge threshold
                     let return_x = match s.remote_edge {
-                        Edge::Left => 10,
-                        Edge::Right => w - 10,
+                        Edge::Left => 30,
+                        Edge::Right => w - 30,
                         _ => w / 2,
                     };
                     let return_y = match s.remote_edge {
-                        Edge::Top => 10,
-                        Edge::Bottom => h - 10,
+                        Edge::Top => 30,
+                        Edge::Bottom => h - 30,
                         _ => h / 2,
                     };
                     self.platform.set_mouse_pos(return_x, return_y);
