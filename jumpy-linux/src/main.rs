@@ -71,7 +71,10 @@ impl PlatformHandler for LinuxPlatform {
             let s = String::from_utf8_lossy(&output.stdout);
             let parts: Vec<&str> = s.trim().split(',').collect();
             if parts.len() == 2 {
-                if let (Ok(x), Ok(y)) = (parts[0].trim().parse::<i32>(), parts[1].trim().parse::<i32>()) {
+                // Hyprland sometimes outputs floats like 123.45
+                let px = parts[0].trim().parse::<f32>().map(|v| v as i32).or_else(|_| parts[0].trim().parse::<i32>());
+                let py = parts[1].trim().parse::<f32>().map(|v| v as i32).or_else(|_| parts[1].trim().parse::<i32>());
+                if let (Ok(x), Ok(y)) = (px, py) {
                     return (x, y);
                 }
             }
@@ -261,7 +264,32 @@ impl PlatformHandler for LinuxPlatform {
     }
 }
 
+fn test_hyprctl_startup() {
+    println!("--- DIAGNOSTIC: Testing hyprctl ---");
+    let mut cmd1 = std::process::Command::new("hyprctl");
+    cmd1.arg("cursorpos");
+    match cmd1.output() {
+        Ok(out) => println!("cursorpos output: {:?}", String::from_utf8_lossy(&out.stdout).trim()),
+        Err(e) => println!("cursorpos error: {:?}", e),
+    }
+    
+    let mut cmd2 = std::process::Command::new("hyprctl");
+    cmd2.arg("monitors");
+    match cmd2.output() {
+        Ok(out) => {
+            let s = String::from_utf8_lossy(&out.stdout);
+            for line in s.lines().take(3) {
+                println!("monitors (first lines): {}", line);
+            }
+        },
+        Err(e) => println!("monitors error: {:?}", e),
+    }
+    println!("-----------------------------------");
+}
+
 fn main() -> Result<(), eframe::Error> {
+    test_hyprctl_startup();
+    
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([720.0, 520.0])
