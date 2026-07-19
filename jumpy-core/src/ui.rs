@@ -53,7 +53,7 @@ impl eframe::App for JumpyApp {
         }
 
         // 2. If in Remote Mode, handle trapping and sending deltas
-        if { self.state.lock().unwrap().is_controlling_remote } {
+        if self.state.lock().unwrap().is_controlling_remote {
             let (x, y) = self.platform.get_mouse_pos();
             let (w, h) = self.platform.get_screen_size();
             
@@ -123,7 +123,7 @@ impl eframe::App for JumpyApp {
             }
 
             // Only trap if we haven't exited, and we are near the edge
-            if { self.state.lock().unwrap().is_controlling_remote } {
+            if self.state.lock().unwrap().is_controlling_remote {
                 if x < 200 || x > w - 200 || y < 200 || y > h - 200 {
                     let center_x = w / 2;
                     let center_y = h / 2;

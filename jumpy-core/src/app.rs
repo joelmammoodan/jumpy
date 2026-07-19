@@ -58,7 +58,7 @@ impl JumpyApp {
         spawn_network_threads(Arc::clone(&state));
 
         // Mouse Receiver Server
-        let (mouse_socket, bound_port) = {
+        let (_mouse_socket, bound_port) = {
             if let Ok(socket) = UdpSocket::bind("0.0.0.0:52638") {
                 (socket, 52638)
             } else {

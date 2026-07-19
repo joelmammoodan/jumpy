@@ -109,7 +109,7 @@ pub fn spawn_network_threads(state: Arc<Mutex<AppState>>) {
         if let Ok(socket) = socket_res {
             let mut buf = [0u8; 1024];
             loop {
-                if let Ok((amt, _src)) = socket.recv_from(&mut buf) {
+                if let Ok((amt, src)) = socket.recv_from(&mut buf) {
                     if let Ok(msg) = serde_json::from_slice::<DiscoveryMessage>(&buf[..amt]) {
                         let mut s = l_state.lock().unwrap();
                         if msg.id != s.local_id {
