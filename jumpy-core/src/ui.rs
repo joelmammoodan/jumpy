@@ -37,8 +37,18 @@ impl eframe::App for JumpyApp {
 
             if hit {
                 // We hit the edge! Transition into Remote Control Mode.
-                let center_x = w / 2;
-                let center_y = h / 2;
+                // We hit the edge! Transition into Remote Control Mode.
+                // To successfully lock the cursor, it must be physically inside the Jumpy window.
+                let mut warp_x = w / 2;
+                let mut warp_y = h / 2;
+                
+                ctx.input(|i| {
+                    if let Some(outer_rect) = i.viewport().outer_rect {
+                        warp_x = outer_rect.center().x as i32;
+                        warp_y = outer_rect.center().y as i32;
+                    }
+                });
+                
                 {
                     let mut s = self.state.lock().unwrap();
                     s.is_controlling_remote = true;
@@ -57,10 +67,10 @@ impl eframe::App for JumpyApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(egui::CursorGrab::Locked));
                 
-                // Set the physical mouse to the center so it doesn't immediately un-trigger edges if we resize
-                self.platform.set_mouse_pos(center_x, center_y);
-                self.last_x = center_x;
-                self.last_y = center_y;
+                // Warp the physical mouse directly into the Jumpy window so Windows allows the grab
+                self.platform.set_mouse_pos(warp_x, warp_y);
+                self.last_x = warp_x;
+                self.last_y = warp_y;
             }
         }
 
