@@ -224,6 +224,7 @@ impl PlatformHandler for LinuxPlatform {
                             for ev in events {
                                 match ev.event_type() {
                                     EventType::RELATIVE => {
+                                        println!("Action: Raw RELATIVE event code {} value {}", ev.code(), ev.value());
                                         if ev.code() == RelativeAxisType::REL_X.0 {
                                             tx.send(MouseControlMsg::Move { dx: ev.value() as f32, dy: 0.0 }).unwrap();
                                         } else if ev.code() == RelativeAxisType::REL_Y.0 {
@@ -233,6 +234,9 @@ impl PlatformHandler for LinuxPlatform {
                                         }
                                     },
                                     EventType::ABSOLUTE => {
+                                        if ev.code() == 0 || ev.code() == 1 {
+                                            println!("Action: Raw ABSOLUTE event code {} value {}", ev.code(), ev.value());
+                                        }
                                         if ev.code() == 0 /* ABS_X */ {
                                             if let Some(last_x) = last_abs_x {
                                                 let dx = ev.value() - last_x;
