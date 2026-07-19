@@ -9,12 +9,18 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
     MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_WHEEL,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, SetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, ClipCursor};
-use windows_sys::Win32::Foundation::{POINT, RECT};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetCursorPos, SetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, ClipCursor,
+    SetWindowsHookExW, UnhookWindowsHookEx, CallNextHookEx, GetMessageW, DispatchMessageW, TranslateMessage,
+    WH_MOUSE_LL, WH_KEYBOARD_LL, HHOOK, MSG, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, 
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEWHEEL, WM_MOUSEMOVE, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    MSLLHOOKSTRUCT, KBDLLHOOKSTRUCT
+};
+use windows_sys::Win32::Foundation::{POINT, RECT, LRESULT, WPARAM, LPARAM};
 use std::mem::{size_of, zeroed};
 use std::sync::atomic::{AtomicBool, Ordering};
-use crossbeam_channel::{unbounded, Receiver};
-use rdev::{Event, EventType, Button};
+use std::sync::OnceLock;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use jumpy_core::network::MouseControlMsg;
 
 #[derive(Clone)]
@@ -23,66 +29,73 @@ struct WindowsPlatform {
     event_rx: Receiver<MouseControlMsg>,
 }
 
-fn convert_button(btn: Button) -> String {
-    match btn {
-        Button::Left => "Left".to_string(),
-        Button::Right => "Right".to_string(),
-        Button::Middle => "Middle".to_string(),
-        Button::Unknown(b) => format!("Unknown({})", b),
+// We don't need rdev anymore, we use native virtual key codes.
+// Native Windows hook state
+static HOOK_TX: OnceLock<Sender<MouseControlMsg>> = OnceLock::new();
+static IS_CAPTURING: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+
+unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+    if code >= 0 {
+        if let Some(is_capturing) = IS_CAPTURING.get() {
+            if is_capturing.load(Ordering::SeqCst) {
+                let msg = w_param as u32;
+                let ms_struct = *(l_param as *const MSLLHOOKSTRUCT);
+                
+                let mut swallow = false;
+                if let Some(tx) = HOOK_TX.get() {
+                    match msg {
+                        WM_LBUTTONDOWN => { tx.send(MouseControlMsg::Click { button: "Left".to_string(), pressed: true }).unwrap(); swallow = true; }
+                        WM_LBUTTONUP => { tx.send(MouseControlMsg::Click { button: "Left".to_string(), pressed: false }).unwrap(); swallow = true; }
+                        WM_RBUTTONDOWN => { tx.send(MouseControlMsg::Click { button: "Right".to_string(), pressed: true }).unwrap(); swallow = true; }
+                        WM_RBUTTONUP => { tx.send(MouseControlMsg::Click { button: "Right".to_string(), pressed: false }).unwrap(); swallow = true; }
+                        WM_MBUTTONDOWN => { tx.send(MouseControlMsg::Click { button: "Middle".to_string(), pressed: true }).unwrap(); swallow = true; }
+                        WM_MBUTTONUP => { tx.send(MouseControlMsg::Click { button: "Middle".to_string(), pressed: false }).unwrap(); swallow = true; }
+                        WM_MOUSEWHEEL => { 
+                            let delta = (ms_struct.mouseData >> 16) as i16 as f32; // wheel delta is high word
+                            tx.send(MouseControlMsg::Scroll { dy: delta }).unwrap();
+                            swallow = true;
+                        }
+                        WM_MOUSEMOVE => {} // Do not swallow mouse move
+                        _ => {}
+                    }
+                }
+                
+                if swallow {
+                    return 1; // 1 means swallow the event!
+                }
+            }
+        }
     }
+    CallNextHookEx(0, code, w_param, l_param)
 }
 
-fn rdev_key_to_code(key: rdev::Key) -> u32 {
-    // rdev does not expose raw OS keycodes universally in a simple cross-platform way,
-    // but we can map rdev::Key back to a rough u32 standard, or send a String.
-    // For simplicity, we just send a numeric hash or standard layout code.
-    // Wait, evdev in Linux needs a standard Linux KEY code (like KEY_A = 30).
-    // Let's implement a very basic map for standard typing keys, or we can just send strings!
-    // Wait, the network protocol uses `key_code: u32`.
-    // Let's just use `key as u32` if possible. `rdev::Key` is an enum, we can't cast directly safely in all versions.
-    // Let's do a basic mapping for now, or just send a dummy.
-    // Actually, `evdev` accepts standard linux key codes.
-    // Let's do a quick match for essential keys.
-    match key {
-        rdev::Key::KeyA => 30,
-        rdev::Key::KeyB => 48,
-        rdev::Key::KeyC => 46,
-        rdev::Key::KeyD => 32,
-        rdev::Key::KeyE => 18,
-        rdev::Key::KeyF => 33,
-        rdev::Key::KeyG => 34,
-        rdev::Key::KeyH => 35,
-        rdev::Key::KeyI => 23,
-        rdev::Key::KeyJ => 36,
-        rdev::Key::KeyK => 37,
-        rdev::Key::KeyL => 38,
-        rdev::Key::KeyM => 50,
-        rdev::Key::KeyN => 49,
-        rdev::Key::KeyO => 24,
-        rdev::Key::KeyP => 25,
-        rdev::Key::KeyQ => 16,
-        rdev::Key::KeyR => 19,
-        rdev::Key::KeyS => 31,
-        rdev::Key::KeyT => 20,
-        rdev::Key::KeyU => 22,
-        rdev::Key::KeyV => 47,
-        rdev::Key::KeyW => 17,
-        rdev::Key::KeyX => 45,
-        rdev::Key::KeyY => 21,
-        rdev::Key::KeyZ => 44,
-        rdev::Key::Return => 28,
-        rdev::Key::Escape => 1,
-        rdev::Key::Backspace => 14,
-        rdev::Key::Space => 57,
-        rdev::Key::ShiftLeft => 42,
-        rdev::Key::ControlLeft => 29,
-        rdev::Key::Alt => 56,
-        rdev::Key::UpArrow => 103,
-        rdev::Key::DownArrow => 108,
-        rdev::Key::LeftArrow => 105,
-        rdev::Key::RightArrow => 106,
-        _ => 0,
+unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+    if code >= 0 {
+        if let Some(is_capturing) = IS_CAPTURING.get() {
+            if is_capturing.load(Ordering::SeqCst) {
+                let msg = w_param as u32;
+                let kbd_struct = *(l_param as *const KBDLLHOOKSTRUCT);
+                let vk_code = kbd_struct.vkCode;
+                
+                if vk_code == 27 { // ESC
+                    is_capturing.store(false, Ordering::SeqCst);
+                    if let Some(tx) = HOOK_TX.get() {
+                        tx.send(MouseControlMsg::ReturnControl).unwrap();
+                    }
+                    return CallNextHookEx(0, code, w_param, l_param);
+                }
+                
+                let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+                
+                if let Some(tx) = HOOK_TX.get() {
+                    // Send the raw virtual key code to the network
+                    tx.send(MouseControlMsg::Key { key_code: vk_code, down }).unwrap();
+                }
+                return 1; // Swallow ALL keys while capturing!
+            }
+        }
     }
+    CallNextHookEx(0, code, w_param, l_param)
 }
 
 impl WindowsPlatform {
@@ -94,46 +107,25 @@ impl WindowsPlatform {
         let hook_tx = tx.clone();
         
         std::thread::spawn(move || {
-            let callback = move |event: Event| -> Option<Event> {
-                if hook_capturing.load(Ordering::SeqCst) {
-                    match event.event_type {
-                        EventType::KeyPress(key) => {
-                            if key == rdev::Key::Escape {
-                                hook_capturing.store(false, Ordering::SeqCst);
-                                let _ = hook_tx.send(MouseControlMsg::ReturnControl);
-                                return Some(event); // Let the host process Escape
-                            }
-                            let _ = hook_tx.send(MouseControlMsg::Key { key_code: rdev_key_to_code(key), down: true });
-                            return None; // Swallow
-                        }
-                        EventType::KeyRelease(key) => {
-                            let _ = hook_tx.send(MouseControlMsg::Key { key_code: rdev_key_to_code(key), down: false });
-                            return None; // Swallow
-                        }
-                        EventType::ButtonPress(btn) => {
-                            let _ = hook_tx.send(MouseControlMsg::Click { button: convert_button(btn), pressed: true });
-                            return None; // Swallow
-                        }
-                        EventType::ButtonRelease(btn) => {
-                            let _ = hook_tx.send(MouseControlMsg::Click { button: convert_button(btn), pressed: false });
-                            return None; // Swallow
-                        }
-                        EventType::Wheel { delta_x: _, delta_y } => {
-                            let _ = hook_tx.send(MouseControlMsg::Scroll { dy: delta_y as f32 });
-                            return None; // Swallow
-                        }
-                        EventType::MouseMove { .. } => {
-                            // We do NOT swallow MouseMove, because ClipCursor naturally stops the cursor from moving,
-                            // and Jumpy needs the hardware to update the OS cursor to calculate `dx` and `dy`.
-                            return Some(event);
-                        }
-                    }
-                }
-                Some(event)
-            };
+            let _ = HOOK_TX.set(hook_tx);
+            let _ = IS_CAPTURING.set(hook_capturing);
             
-            if let Err(error) = rdev::grab(callback) {
-                println!("Error: {:?}", error);
+            unsafe {
+                let mouse_hook = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_proc), 0, 0);
+                let kbd_hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), 0, 0);
+                
+                if mouse_hook == 0 || kbd_hook == 0 {
+                    println!("Error: Failed to install global hooks!");
+                }
+                
+                let mut msg: MSG = zeroed();
+                while GetMessageW(&mut msg, 0, 0, 0) > 0 {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+                
+                if mouse_hook != 0 { UnhookWindowsHookEx(mouse_hook); }
+                if kbd_hook != 0 { UnhookWindowsHookEx(kbd_hook); }
             }
         });
         

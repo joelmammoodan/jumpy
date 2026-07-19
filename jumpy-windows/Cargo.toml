@@ -6,6 +6,5 @@ edition = "2024"
 [dependencies]
 jumpy-core = { path = "../jumpy-core" }
 eframe = "0.28.1"
-rdev = { version = "0.5.3", features = ["unstable_grab"] }
 crossbeam-channel = "0.5"
 windows-sys = { version = "0.52", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
