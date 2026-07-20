@@ -63,7 +63,15 @@ impl JumpyApp {
 
         // 2. Generate local identity
         let local_id = rand::thread_rng().gen_range(100000..999999).to_string();
-        let local_name = "Jumpy Host".to_string();
+        
+        let god_names = [
+            "⚡ Zeus", "🦚 Hera", "🔱 Poseidon", "🌾 Demeter", "⚔️ Ares", "🦉 Athena", "☀️ Apollo", 
+            "🏹 Artemis", "🔨 Hephaestus", "💖 Aphrodite", "🏃 Hermes", "🍇 Dionysus", "💀 Hades",
+            "🌩️ Jupiter", "👑 Juno", "🌊 Neptune", "🥖 Ceres", "🛡️ Mars", "📚 Minerva", "🦌 Diana", 
+            "🌋 Vulcan", "🪞 Venus", "📜 Mercury", "🍷 Bacchus", "🪙 Pluto"
+        ];
+        let local_name = god_names[rand::thread_rng().gen_range(0..god_names.len())].to_string();
+        
         let local_ip = get_local_ip();
 
         // 3. Initialize Shared State

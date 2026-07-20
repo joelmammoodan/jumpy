@@ -13,8 +13,8 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, SetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, ClipCursor,
     SetWindowsHookExW, UnhookWindowsHookEx, CallNextHookEx, GetMessageW, DispatchMessageW, TranslateMessage,
-    WH_MOUSE_LL, WH_KEYBOARD_LL, HHOOK, MSG, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, 
-    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEWHEEL, WM_MOUSEMOVE, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    WH_MOUSE_LL, WH_KEYBOARD_LL, MSG, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, 
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEWHEEL, WM_MOUSEMOVE, WM_KEYDOWN, WM_SYSKEYDOWN,
     MSLLHOOKSTRUCT, KBDLLHOOKSTRUCT
 };
 use windows_sys::Win32::Foundation::{POINT, RECT, LRESULT, WPARAM, LPARAM};
@@ -40,8 +40,9 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: WPARAM, l_param: L
         if let Some(is_capturing) = IS_CAPTURING.get() {
             if is_capturing.load(Ordering::SeqCst) {
                 let msg = w_param as u32;
-                let ms_struct = *(l_param as *const MSLLHOOKSTRUCT);
+                let ms_struct = unsafe { *(l_param as *const MSLLHOOKSTRUCT) };
                 
+
                 let mut swallow = false;
                 if let Some(tx) = HOOK_TX.get() {
                     match msg {
@@ -67,7 +68,7 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, w_param: WPARAM, l_param: L
             }
         }
     }
-    CallNextHookEx(0, code, w_param, l_param)
+    unsafe { CallNextHookEx(0, code, w_param, l_param) }
 }
 
 unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
@@ -75,7 +76,7 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: WPARAM, l_param
         if let Some(is_capturing) = IS_CAPTURING.get() {
             if is_capturing.load(Ordering::SeqCst) {
                 let msg = w_param as u32;
-                let kbd_struct = *(l_param as *const KBDLLHOOKSTRUCT);
+                let kbd_struct = unsafe { *(l_param as *const KBDLLHOOKSTRUCT) };
                 let vk_code = kbd_struct.vkCode;
                 
                 if vk_code == 27 { // ESC
@@ -83,7 +84,7 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: WPARAM, l_param
                     if let Some(tx) = HOOK_TX.get() {
                         tx.send(MouseControlMsg::ReturnControl).unwrap();
                     }
-                    return CallNextHookEx(0, code, w_param, l_param);
+                    return unsafe { CallNextHookEx(0, code, w_param, l_param) };
                 }
                 
                 let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
@@ -96,7 +97,7 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: WPARAM, l_param
             }
         }
     }
-    CallNextHookEx(0, code, w_param, l_param)
+    unsafe { CallNextHookEx(0, code, w_param, l_param) }
 }
 
 impl WindowsPlatform {

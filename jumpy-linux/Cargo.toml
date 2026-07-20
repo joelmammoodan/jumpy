@@ -8,3 +8,4 @@ jumpy-core = { path = "../jumpy-core" }
 eframe = "0.28.1"
 evdev = "0.12"
 libc = "0.2"
+crossbeam-channel = "0.5"

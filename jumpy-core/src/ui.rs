@@ -263,18 +263,18 @@ impl eframe::App for JumpyApp {
             egui::CentralPanel::default()
                 .frame(egui::Frame::none().fill(egui::Color32::from_rgb(10, 11, 16)).inner_margin(24.0))
                 .show(ctx, |ui| {
-                    // Local Info Section
-                    ui.label(egui::RichText::new("Local Machine").strong().size(18.0).color(egui::Color32::WHITE));
-                    ui.add_space(8.0);
-                    
                     let (local_ip, local_name) = {
                         let s = self.state.lock().unwrap();
                         (s.local_ip.clone(), s.local_name.clone())
                     };
-                    
-                    ui.label(format!("Name: {}", local_name));
-                    ui.label(format!("IP Address: {}", local_ip));
-                    ui.add_space(16.0);
+
+                    // Local Info Section (Centered)
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new(&local_name).strong().size(40.0).color(primary));
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new(format!("IP Address: {}", local_ip)).size(16.0).color(egui::Color32::GRAY));
+                    });
+                    ui.add_space(24.0);
                     
                     // Seamless Setup Section
                     ui.label(egui::RichText::new("Seamless Edge Configuration").strong().size(16.0).color(egui::Color32::WHITE));
@@ -355,11 +355,39 @@ impl eframe::App for JumpyApp {
                             });
                         });
                     } else {
+                        let peers = {
+                            let s = self.state.lock().unwrap();
+                            s.peers.values().cloned().collect::<Vec<_>>()
+                        };
+                        let is_scanning = peers.is_empty();
+
                         // Network Devices Section
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new("Discovered Devices").strong().size(22.0).color(egui::Color32::WHITE));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.button("🔄 Refresh").clicked() {
+                                let (rect, response) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click());
+                                
+                                if response.hovered() {
+                                    ui.painter().rect_filled(rect, 4.0, ui.visuals().widgets.hovered.bg_fill);
+                                }
+                                
+                                if is_scanning {
+                                    ui.allocate_ui_at_rect(rect, |ui| {
+                                        ui.centered_and_justified(|ui| {
+                                            ui.add(egui::Spinner::new().size(18.0).color(primary));
+                                        });
+                                    });
+                                } else {
+                                    ui.painter().text(
+                                        rect.center(), 
+                                        egui::Align2::CENTER_CENTER, 
+                                        "🔄", 
+                                        egui::FontId::proportional(18.0), 
+                                        ui.visuals().text_color()
+                                    );
+                                }
+                                
+                                if response.clicked() {
                                     let mut s = self.state.lock().unwrap();
                                     s.peers.clear();
                                     self.selected_peer_id = None;
@@ -369,17 +397,33 @@ impl eframe::App for JumpyApp {
                         
                         ui.add_space(12.0);
                         
-                        let peers = {
-                            let s = self.state.lock().unwrap();
-                            s.peers.values().cloned().collect::<Vec<_>>()
-                        };
-                        
                         if peers.is_empty() {
                             ui.vertical_centered(|ui| {
-                                ui.add_space(40.0);
-                                ui.label(egui::RichText::new("Scanning network for Jumpy devices...").italics().size(16.0).color(egui::Color32::GRAY));
-                                ui.add_space(10.0);
-                                ui.spinner();
+                                ui.add_space(60.0);
+                                
+                                let time = ui.input(|i| i.time);
+                                let dots = (time * 3.0) as usize % 4;
+                                let dots_str = ".".repeat(dots);
+                                let text = format!("Scanning network{}", dots_str);
+                                
+                                let alpha = (time.sin() * 0.5 + 0.5) as f32 * 0.5 + 0.5;
+                                let color = primary.linear_multiply(alpha);
+                                
+                                ui.label(egui::RichText::new(text).italics().size(18.0).color(color));
+                                ui.add_space(30.0);
+                                
+                                // Custom orbiting circles animation
+                                let (rect, _) = ui.allocate_exact_size(egui::vec2(60.0, 60.0), egui::Sense::hover());
+                                let center = rect.center();
+                                let radius = 25.0;
+                                let painter = ui.painter();
+                                
+                                for i in 0..3 {
+                                    let offset = (i as f64) * std::f64::consts::PI * 2.0 / 3.0;
+                                    let current = time * 3.0 + offset;
+                                    let pos = center + egui::vec2(current.cos() as f32, current.sin() as f32) * radius;
+                                    painter.circle_filled(pos, 7.0, primary.linear_multiply(0.8));
+                                }
                             });
                         } else {
                             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {

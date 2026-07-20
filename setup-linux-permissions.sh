@@ -33,6 +33,27 @@ udevadm trigger
 echo "Reloaded udev rules."
 
 echo ""
+
+# 5. Open firewall ports (52637 and 52638 UDP)
+echo "Opening firewall ports 52637 and 52638 (UDP) for Jumpy..."
+if command -v ufw >/dev/null 2>&1; then
+    ufw allow 52637/udp
+    ufw allow 52638/udp
+    echo "Opened ports using ufw."
+elif command -v firewall-cmd >/dev/null 2>&1; then
+    firewall-cmd --permanent --add-port=52637/udp
+    firewall-cmd --permanent --add-port=52638/udp
+    firewall-cmd --reload
+    echo "Opened ports using firewalld."
+elif command -v iptables >/dev/null 2>&1; then
+    iptables -I INPUT -p udp --dport 52637 -j ACCEPT
+    iptables -I INPUT -p udp --dport 52638 -j ACCEPT
+    echo "Opened ports using iptables."
+else
+    echo "Warning: Could not find ufw, firewalld, or iptables. Please manually open UDP ports 52637 and 52638."
+fi
+
+echo ""
 echo "=================================================================="
 echo "Setup complete! IMPORTANT: You must log out and log back in"
 echo "(or restart your computer) for the group changes to take effect."

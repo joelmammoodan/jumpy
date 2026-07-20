@@ -2290,6 +2290,7 @@ dependencies = [
 name = "jumpy-linux"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-channel",
  "eframe",
  "evdev",
  "jumpy-core",
