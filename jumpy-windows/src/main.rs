@@ -359,7 +359,20 @@ fn map_vk_to_evdev(vk: u32) -> u32 {
         0xBA => 39, // ;
         0xDE => 40, // '
         0xC0 => 41, // `
-        0x10 => 42, // LSHIFT (default for SHIFT)
+        
+        // Modifiers (Left/Right specific & generic fallbacks)
+        0xA0 => 42, // VK_LSHIFT
+        0xA1 => 54, // VK_RSHIFT
+        0x10 => 42, // LSHIFT (default for generic SHIFT)
+        0xA2 => 29, // VK_LCONTROL
+        0xA3 => 97, // VK_RCONTROL
+        0x11 => 29, // LCTRL (default for generic CONTROL)
+        0xA4 => 56, // VK_LMENU (LALT)
+        0xA5 => 100, // VK_RMENU (RALT)
+        0x12 => 56, // LALT (default for generic MENU/ALT)
+        0x5B => 125, // VK_LWIN (Left Windows key) -> KEY_LEFTMETA
+        0x5C => 126, // VK_RWIN (Right Windows key) -> KEY_RIGHTMETA
+        
         0xDC => 43, // \
         0x5A => 44, // Z
         0x58 => 45, // X
@@ -371,13 +384,36 @@ fn map_vk_to_evdev(vk: u32) -> u32 {
         0xBC => 51, // ,
         0xBE => 52, // .
         0xBF => 53, // /
-        0x12 => 56, // LALT
+        
         0x20 => 57, // SPACE
         0x14 => 58, // CAPS
-        0x26 => 103, // UP
+        
+        // Function Keys
+        0x70 => 59, // F1
+        0x71 => 60, // F2
+        0x72 => 61, // F3
+        0x73 => 62, // F4
+        0x74 => 63, // F5
+        0x75 => 64, // F6
+        0x76 => 65, // F7
+        0x77 => 66, // F8
+        0x78 => 67, // F9
+        0x79 => 68, // F10
+        0x7A => 87, // F11
+        0x7B => 88, // F12
+
+        // Navigation
         0x25 => 105, // LEFT
+        0x26 => 103, // UP
         0x27 => 106, // RIGHT
         0x28 => 108, // DOWN
+        0x24 => 102, // HOME
+        0x23 => 107, // END
+        0x21 => 104, // PAGE UP
+        0x22 => 109, // PAGE DOWN
+        0x2D => 110, // INSERT
+        0x2E => 111, // DELETE
+        
         _ => 0
     }
 }
