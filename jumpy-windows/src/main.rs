@@ -90,8 +90,8 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: WPARAM, l_param
                 let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
                 
                 if let Some(tx) = HOOK_TX.get() {
-                    // Send the mapped evdev key code to the network
                     let evdev_code = map_vk_to_evdev(vk_code);
+                    println!("Captured key: vk_code={}, mapped_evdev={}, down={}", vk_code, evdev_code, down);
                     if evdev_code != 0 {
                         tx.send(MouseControlMsg::Key { key_code: evdev_code, down }).unwrap();
                     }
@@ -346,7 +346,6 @@ fn map_vk_to_evdev(vk: u32) -> u32 {
         0xDB => 26, // [
         0xDD => 27, // ]
         0x0D => 28, // ENTER
-        0x11 => 29, // LCTRL
         0x41 => 30, // A
         0x53 => 31, // S
         0x44 => 32, // D
