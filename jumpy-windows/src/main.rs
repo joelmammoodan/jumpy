@@ -90,8 +90,11 @@ unsafe extern "system" fn keyboard_hook_proc(code: i32, w_param: WPARAM, l_param
                 let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
                 
                 if let Some(tx) = HOOK_TX.get() {
-                    // Send the raw virtual key code to the network
-                    tx.send(MouseControlMsg::Key { key_code: vk_code, down }).unwrap();
+                    // Send the mapped evdev key code to the network
+                    let evdev_code = map_vk_to_evdev(vk_code);
+                    if evdev_code != 0 {
+                        tx.send(MouseControlMsg::Key { key_code: evdev_code, down }).unwrap();
+                    }
                 }
                 return 1; // Swallow ALL keys while capturing!
             }
@@ -309,6 +312,72 @@ fn map_evdev_to_vk(evdev: u32) -> u16 {
         105 => 0x25, // LEFT
         106 => 0x27, // RIGHT
         108 => 0x28, // DOWN
+        _ => 0
+    }
+}
+
+fn map_vk_to_evdev(vk: u32) -> u32 {
+    match vk as u16 {
+        0x1B => 1, // ESC
+        0x31 => 2, // 1
+        0x32 => 3, // 2
+        0x33 => 4, // 3
+        0x34 => 5, // 4
+        0x35 => 6, // 5
+        0x36 => 7, // 6
+        0x37 => 8, // 7
+        0x38 => 9, // 8
+        0x39 => 10, // 9
+        0x30 => 11, // 0
+        0xBD => 12, // MINUS
+        0xBB => 13, // EQUAL
+        0x08 => 14, // BACKSPACE
+        0x09 => 15, // TAB
+        0x51 => 16, // Q
+        0x57 => 17, // W
+        0x45 => 18, // E
+        0x52 => 19, // R
+        0x54 => 20, // T
+        0x59 => 21, // Y
+        0x55 => 22, // U
+        0x49 => 23, // I
+        0x4F => 24, // O
+        0x50 => 25, // P
+        0xDB => 26, // [
+        0xDD => 27, // ]
+        0x0D => 28, // ENTER
+        0x11 => 29, // LCTRL
+        0x41 => 30, // A
+        0x53 => 31, // S
+        0x44 => 32, // D
+        0x46 => 33, // F
+        0x47 => 34, // G
+        0x48 => 35, // H
+        0x4A => 36, // J
+        0x4B => 37, // K
+        0x4C => 38, // L
+        0xBA => 39, // ;
+        0xDE => 40, // '
+        0xC0 => 41, // `
+        0x10 => 42, // LSHIFT (default for SHIFT)
+        0xDC => 43, // \
+        0x5A => 44, // Z
+        0x58 => 45, // X
+        0x43 => 46, // C
+        0x56 => 47, // V
+        0x42 => 48, // B
+        0x4E => 49, // N
+        0x4D => 50, // M
+        0xBC => 51, // ,
+        0xBE => 52, // .
+        0xBF => 53, // /
+        0x12 => 56, // LALT
+        0x20 => 57, // SPACE
+        0x14 => 58, // CAPS
+        0x26 => 103, // UP
+        0x25 => 105, // LEFT
+        0x27 => 106, // RIGHT
+        0x28 => 108, // DOWN
         _ => 0
     }
 }

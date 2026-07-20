@@ -11,20 +11,22 @@ use jumpy_core::network::MouseControlMsg;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 struct LinuxPlatform {
-    device: Option<Mutex<VirtualDevice>>,
+    mouse_dev: Option<Mutex<VirtualDevice>>,
+    kbd_dev: Option<Mutex<VirtualDevice>>,
     capturing: Mutex<Option<(Arc<AtomicBool>, Receiver<MouseControlMsg>)>>,
 }
 
 impl LinuxPlatform {
     fn new() -> Self {
-        let mut keys = AttributeSet::new();
-        keys.insert(Key::BTN_LEFT);
-        keys.insert(Key::BTN_RIGHT);
-        keys.insert(Key::BTN_MIDDLE);
+        let mut mouse_keys = AttributeSet::new();
+        mouse_keys.insert(Key::BTN_LEFT);
+        mouse_keys.insert(Key::BTN_RIGHT);
+        mouse_keys.insert(Key::BTN_MIDDLE);
         
+        let mut kbd_keys = AttributeSet::new();
         // Register standard keyboard keys (1 to 255)
         for i in 1..255 {
-            keys.insert(Key::new(i));
+            kbd_keys.insert(Key::new(i));
         }
 
         let mut rel_axes = AttributeSet::new();
@@ -32,25 +34,33 @@ impl LinuxPlatform {
         rel_axes.insert(RelativeAxisType::REL_Y);
         rel_axes.insert(RelativeAxisType::REL_WHEEL);
 
-        let device = match VirtualDeviceBuilder::new() {
+        let mouse_dev = match VirtualDeviceBuilder::new() {
             Ok(builder) => builder
                 .name("Jumpy Virtual Mouse")
-                .with_keys(&keys).unwrap()
+                .with_keys(&mouse_keys).unwrap()
                 .with_relative_axes(&rel_axes).unwrap()
-                .build(),
+                .build()
+                .ok()
+                .map(Mutex::new),
             Err(e) => {
                 println!("Error: Failed to create VirtualDeviceBuilder: {:?}", e);
-                Err(e)
+                None
             }
         };
         
-        match device {
-            Ok(dev) => Self { device: Some(Mutex::new(dev)), capturing: Mutex::new(None) },
-            Err(e) => {
-                println!("Error: Failed to create uinput device. You need permission to write to /dev/uinput. Error: {:?}", e);
-                Self { device: None, capturing: Mutex::new(None) }
-            }
+        let kbd_dev = VirtualDeviceBuilder::new()
+            .unwrap_or_else(|_| VirtualDeviceBuilder::new().unwrap()) // fallbacks
+            .name("Jumpy Virtual Keyboard")
+            .with_keys(&kbd_keys).unwrap()
+            .build()
+            .ok()
+            .map(Mutex::new);
+
+        if mouse_dev.is_none() || kbd_dev.is_none() {
+            println!("Error: Failed to create one or more uinput devices. You need permission to write to /dev/uinput.");
         }
+
+        Self { mouse_dev, kbd_dev, capturing: Mutex::new(None) }
     }
 }
 
@@ -126,7 +136,7 @@ impl PlatformHandler for LinuxPlatform {
     }
 
     fn send_mouse_move(&self, dx: i32, dy: i32) {
-        if let Some(dev_mutex) = &self.device {
+        if let Some(dev_mutex) = &self.mouse_dev {
             if let Ok(mut dev) = dev_mutex.lock() {
                 let _ = dev.emit(&[
                     InputEvent::new(EventType::RELATIVE, RelativeAxisType::REL_X.0, dx),
@@ -145,7 +155,7 @@ impl PlatformHandler for LinuxPlatform {
             _ => return,
         };
         let value = if pressed { 1 } else { 0 };
-        if let Some(dev_mutex) = &self.device {
+        if let Some(dev_mutex) = &self.mouse_dev {
             if let Ok(mut dev) = dev_mutex.lock() {
                 let _ = dev.emit(&[
                     InputEvent::new(EventType::KEY, key.code(), value),
@@ -158,7 +168,7 @@ impl PlatformHandler for LinuxPlatform {
     fn send_mouse_scroll(&self, dy: i32) {
         // Jumpy sends a positive dy for scrolling up, negative for down.
         // uinput REL_WHEEL expects positive for scrolling up.
-        if let Some(dev_mutex) = &self.device {
+        if let Some(dev_mutex) = &self.mouse_dev {
             if let Ok(mut dev) = dev_mutex.lock() {
                 let _ = dev.emit(&[
                     InputEvent::new(EventType::RELATIVE, RelativeAxisType::REL_WHEEL.0, dy),
@@ -170,7 +180,7 @@ impl PlatformHandler for LinuxPlatform {
 
     fn send_key(&self, key_code: u32, down: bool) {
         let value = if down { 1 } else { 0 };
-        if let Some(dev_mutex) = &self.device {
+        if let Some(dev_mutex) = &self.kbd_dev {
             if let Ok(mut dev) = dev_mutex.lock() {
                 let _ = dev.emit(&[
                     InputEvent::new(EventType::KEY, key_code as u16, value),
